@@ -1,4 +1,6 @@
-
+library(tidyverse)
+library(reshape2)
+library(abind)
 #river migration survival by stock/AU - currently wild stocks only (check) 
 #Only Ume/Vindel currently has reduced spawner survival in some years
 #Note that if extra mortality is added for wild stocks 1-4 in years with tagging data, 

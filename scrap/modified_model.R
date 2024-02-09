@@ -636,14 +636,22 @@ for (i in 1:m){                    ### Tagging data likelihoods ###
         
         ################## Total catch calculations ######################
         
-        NdoW_all[i,j]<-sum(NdoW[i,j,1:stocks])
-        NlW_all[i,j]<- sum(NlW[i,j,1:stocks])
-		    NtW_all[i,j]<- sum(NtW[i,j,1:stocks])									 
+#         NdoW_all[i,j]<-sum(NdoW[i,j,1:stocks])
+#         NlW_all[i,j]<- sum(NlW[i,j,1:stocks])
+# 		    NtW_all[i,j]<- sum(NtW[i,j,1:stocks])									 
+#         
+#         NdoR_all[i,j]<- sum(NdoR[i,j,])+sum(NdoRsp[i,j,1:2])
+#         NlR_all[i,j]<- sum(NlR[i,j,])+sum(NlRsp[i,j,1:2])
+#         NtR_all[i,j]<- sum(NtR[i,j,])+sum(NtRsp[i,j,1:2])
         
-        NdoR_all[i,j]<- sum(NdoR[i,j,])+sum(NdoRsp[i,j,1:2])
-        NlR_all[i,j]<- sum(NlR[i,j,])+sum(NlRsp[i,j,1:2])
-        NtR_all[i,j]<- sum(NtR[i,j,])+sum(NtRsp[i,j,1:2])
- 
+        NdoW_all[i,j]<-sum(NdoW[i,j,])
+        NlW_all[i,j]<- sum(NlW[i,j,])
+		    NtW_all[i,j]<- sum(NtW[i,j,])									 
+        
+        NdoR_all[i,j]<- sum(NdoR[i,j,])+sum(NdoRsp[i,j,])
+        NlR_all[i,j]<- sum(NlR[i,j,])+sum(NlRsp[i,j,])
+        NtR_all[i,j]<- sum(NtR[i,j,])+sum(NtRsp[i,j,])
+  
         # Estimated catches of non-returning salmon in the offshore fishery
         nco_W[i,j] <- PropCW[i] * (HdoW[i,j]*NdoW_all[i,j]+HlW[i,j]*NlW_all[i,j])   
         nco_R[i,j] <- PropCR[i] * (HdoR[i,j]*NdoR_all[i,j]+HlR[i,j]*NlR_all[i,j])   
@@ -705,7 +713,8 @@ for (i in 1:m){                    ### Tagging data likelihoods ###
         psi_cW[i,j,1]<-rcW[j]/(rcW[j]+cc_predW[i,j,1])
         cc_ObsW[i,j,1] ~ dnegbin(psi_cW[i,j,1], rcW[j])	              # MSW AU 1
 		 
- 	      for(au in 1:AUS){   
+ 	      #for(au in 1:AUS){   
+ 	      for(au in stock:stock){   
             
             TcRtot[i,j,au]<- TcR[i,j,au]+TcRsp[i,j,au]
             
@@ -724,25 +733,30 @@ for (i in 1:m){                    ### Tagging data likelihoods ###
         
         # Morrum and Eman not included why not included in river?
 
-        NrW_all[i,j]<- sum(NladderW[i,j,avail_r]*(HrW[i,j]*rivHR[(i+j-1),avail_r]))+sum(NladderRsp[i,j,1:2]*(HrW[i,j]*rivHR[(i+j-1),1:2]))	  #avail_r 1:13, 16 
-        NdcW_all[i,j]<-sum(NdcW[i,j,avail_dc])		                  #1:13 ,16
+        #NrW_all[i,j]<- sum(NladderW[i,j,avail_r]*(HrW[i,j]*rivHR[(i+j-1),avail_r]))+sum(NladderRsp[i,j,1:2]*(HrW[i,j]*rivHR[(i+j-1),1:2]))	  #avail_r 1:13, 16 
+        NrW_all[i,j]<- sum(NladderW[i,j,stock:stock]*(HrW[i,j]*rivHR[(i+j-1),stock:stock]))#+sum(NladderRsp[i,j,stock]*(HrW[i,j]*rivHR[(i+j-1),stock]))	  #avail_r 1:13, 16 
+        #NdcW_all[i,j]<-sum(NdcW[i,j,avail_dc])		                  #1:13 ,16
+        NdcW_all[i,j]<-sum(NdcW[i,j,stock:stock])
         
         NrR_all[i,j]<- sum(NrR[i,j,])
-        NdcR_all[i,j]<- sum(NdcR[i,j,1:(AUS-1)])+sum(NdcRsp[i,j,1:2]) #not AU4     
+        #NdcR_all[i,j]<- sum(NdcR[i,j,1:(AUS-1)])+sum(NdcRsp[i,j,1:2]) #not AU4     
+        NdcR_all[i,j]<- sum(NdcR[i,j,1:1])+sum(NdcRsp[i,j,stock:stock]) #not AU4     
        
-        NcR_all[i,j,1]<- NcR[i,j,1]+sum(NcRsp[i,j,1:2])		
-        NcR_all[i,j,2]<- NcR[i,j,2]  					
-        NcR_all[i,j,3]<- NcR[i,j,3]  		
+        NcR_all[i,j,1]<- NcR[i,j,1]#+sum(NcRsp[i,j,1:2])		
+        #NcR_all[i,j,2]<- NcR[i,j,2]  					
+        #NcR_all[i,j,3]<- NcR[i,j,3]  		
          
         # Estimated catches of wild and hatchery-reared salmon in the river
         ncr[i,j]<- NrW_all[i,j]+HrR[i,j]*NrR_all[i,j]
         
         # Estimated catches of salmon in the coastal areas
-        for(s in 1:stocks){
+        #for(s in 1:stocks){
+        for(s in stock:stock){
             nccs[i,j,s]<-HcW[i,j,AU[s]]*NcW[i,j,s] 
         }
            
-    ncc[i,j] <- sum(nccs[i,j,1:stocks]) + inprod(HcR[i,j,1:(AUS-1)],NcR_all[i,j,1:(AUS-1)])+ HdcW[i,j]*NdcW_all[i,j]+HdcR[i,j]*NdcR_all[i,j]  #not AU4	   
+    #ncc[i,j] <- sum(nccs[i,j,1:stocks]) + inprod(HcR[i,j,1:(AUS-1)],NcR_all[i,j,1:(AUS-1)])+ HdcW[i,j]*NdcW_all[i,j]+HdcR[i,j]*NdcR_all[i,j]  #not AU4	   
+    ncc[i,j] <- sum(nccs[i,j,stock:stock]) + inprod(HcR[i,j,stock:stock],NcR_all[i,j,stock:stock])+ HdcW[i,j]*NdcW_all[i,j]+HdcR[i,j]*NdcR_all[i,j]  #not AU4	   
         
     }	#j       
 }  #i
@@ -797,10 +811,10 @@ for (i in 6:(m-1)){
     beta_msw[i,1]<-(1-probMSW[i,1])*eta_star[i,1]
     MSWprop[i,1]~dbeta(alpha_msw[i,1],beta_msw[i,1])
     
-    sp_count[i,2]~dlnorm(muDS[i], tauDS) # Simojoki Didson count
-    sp_countX[i,2]~dlnorm(muDS[i], tauDS) 
+    #sp_count[i,2]~dlnorm(muDS[i], tauDS) # Simojoki Didson count
+    #sp_countX[i,2]~dlnorm(muDS[i], tauDS) 
   
-    muDS[i]<-log(NrWtot[i,2]/coefDS)-0.5*(1/tauDS)
+    #muDS[i]<-log(NrWtot[i,2]/coefDS)-0.5*(1/tauDS)
 	
    
 #     for(s in 3:stocks){
@@ -918,8 +932,8 @@ for(i in 1:(m+proj_years)){
     surv[i,1,6,2]<-(1-HtR[i,1]) * exp(-MpsR[i]/Tstep)			
 																										   
     
-    #for (au in 1:3){	
-    for (au in stock:stock){	
+    for (au in 1:3){	
+    #for (au in stock:stock){	
     
         F_sea[i,1,1,au]<-qctnW[1,au]*Ectn[i,1,au]+qcgnW[1,au]*Ecgn[i,1,au]														
         survc[i,1,1,au] <- exp(-F_sea[i,1,1,au])* exp(-(6*MpsW[i]/Tstep))   
@@ -966,8 +980,8 @@ for(i in 1:(m+proj_years)){
 		    surv[i,j,6,1]<-(1-HtW[i,j]) * exp(-MW/Tstep) 	         
         surv[i,j,6,2]<-(1-HtR[i,j]) * exp(-MR/Tstep)											   
 													  
-        #for(au in 1:3){
-        for(au in stock:stock){
+        for(au in 1:3){
+        #for(au in stock:stock){
       		  
             # Survival from natural and fishing mortality during June and July			
             F_sea[i,j,1,au]<-qctnW[j,au]*Ectn[i,j,au]+qcgnW[j,au]*Ecgn[i,j,au]		
@@ -1024,8 +1038,8 @@ for(i in 1:(m+proj_years)){
         #5 survr  
         zzr[i,j]~ dgamma(2, 50)I( , maxvar)         
         
-        #for(s in 1:stocks){  
-        for(s in stock:stock){  
+        for(s in 1:stocks){  
+        #for(s in stock:stock){  
         
             kkrw[i,j,s] <- step(surv.riv[i,j,s]*surv_migr[(i+j-1),s] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
             maxErw[i,j,s] <- ((1 / (surv.riv[i,j,s]*surv_migr[(i+j-1),s])) * kkrw[i,j,s]) + (2 * (1 - kkrw[i,j,s]))
@@ -1075,8 +1089,8 @@ for(i in 1:(m+proj_years)){
 
         
         for(ij in 1:2){  #reared or wild
-           #for(au in 1:AUS){  
-           for(au in stock:stock){  
+           for(au in 1:AUS){  
+           #for(au in stock:stock){  
               kkc[i,j,ij,au] <- step(survc[i,j,ij,au] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
               kkdc[i,j,ij,au] <- step(survdc[i,j,ij,au] - 0.5)
               maxEc[i,j,ij,au] <- ((1 / survc[i,j,ij,au]) * kkc[i,j,ij,au]) + (2 * (1 - kkc[i,j,ij,au]))
@@ -1227,20 +1241,20 @@ for(i in (m+1):(m+proj_years)){
 	qcgnW[1,1] ~ dlnorm(mqcgn[1,1], tauqcgn)	# Catchability wild salmon coastal gillnet	
 	qcgnR[1,1] ~ dlnorm(mqcgn[1,1], tauqcgn)	# Catchability reared salmon coastal gillnet 
 	mqcgn[1,1] <- log(-log(1-HRCGN[1,1])/Ecgn[1,1,1])# Mean catchability coastal gillnet fishery
-# 	
-#   for (au in 2:3){
-#      
-#     HRCTN[1,au]  ~dbeta (1,20)	# Harvest rate smolts in coastal trapnet fishery
-#    	HRCGN[1,au] ~dbeta (1,20)	# Harvest rate smolts in coastal gillnet fishery
-# 		
-#     qctnR[1,au] <- qctnR[1,1]
-# 		mqctn[1,au] <- mqctn[1,1]		
-# 		qctnW[1,au] <- (qctnW[1,1] / qctnR[1,1] ) * qctnR[1,au]
-# 
-# 		qcgnR[1,au] <- qcgnR[1,1]
-# 		mqcgn[1,au] <- mqcgn[1,1]			
-# 		qcgnW[1,au] <- (qcgnW[1,1] / qcgnR[1,1] ) * qcgnR[1,au]
-#   }
+
+  for (au in 2:3){
+
+    HRCTN[1,au]  ~dbeta (1,20)	# Harvest rate smolts in coastal trapnet fishery
+   	HRCGN[1,au] ~dbeta (1,20)	# Harvest rate smolts in coastal gillnet fishery
+
+    qctnR[1,au] <- qctnR[1,1]
+		mqctn[1,au] <- mqctn[1,1]
+		qctnW[1,au] <- (qctnW[1,1] / qctnR[1,1] ) * qctnR[1,au]
+
+		qcgnR[1,au] <- qcgnR[1,1]
+		mqcgn[1,au] <- mqcgn[1,1]
+		qcgnW[1,au] <- (qcgnW[1,1] / qcgnR[1,1] ) * qcgnR[1,au]
+  }
 
 # Grilse (j=2) and 2SW salmon	(j=3)
 
@@ -1375,8 +1389,8 @@ for (j in 2:3){
   #  HRD[j] ~dbeta (2,5)	# Harvest rate driftnet fishery	
   #  HRL[j] ~dbeta (2,5)	# Harvest rate longline fishery	
 }
-#for (au in 1:3){
-for (au in stock:stock){
+for (au in 1:3){
+#for (au in stock:stock){
   HRCGN[2,au]  ~dbeta (2,2.5) 	# Harvest rate coastal gillnet fishery of fish from area k
   HRCTN[2,au]  ~dbeta (2,2.5) 	# Harvest rate coastal trapnet fishery of fish from area k	
 
@@ -1557,8 +1571,8 @@ tauL[3]~dlnorm(2.3,41)
 tauL[4]~dlnorm(1.4,46)
 
 #priors for spawner counting
-#for(s in 1:stocks){
-for(s in stock:stock){
+for(s in 1:stocks){
+#for(s in stock:stock){
     a_spawn[s]<-mu_spawn[s]*eta_spawn[s]+1
     b_spawn[s]<-(1-mu_spawn[s])*eta_spawn[s]+1
     

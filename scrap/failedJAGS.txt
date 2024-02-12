@@ -1,0 +1,1542 @@
+
+JAGS model syntax:
+
+1     |  model{
+2     |  #here i index denotes current year
+3     |  pmat[1,1]<-0 
+4     |  pimm[1,1]<-1
+5     |  for(j in 2:6){
+6     |  pmat[1,j]<-LW[1,(j-1)]*pimm[1,(j-1)]      
+7     |  pimm[1,j]<-(1-LW[1,(j-1)])*pimm[1,(j-1)]
+8     |  }
+9     |  for(i in 2:(m+proj_years)){
+10    |  pmat[i,1]<-0
+11    |  pimm[i,1]<-1
+12    |  for(j in 2:6){
+13    |  pmat[i,j]<-LW[i,(j-1)]*pimm[(i-1),(j-1)]     
+14    |  pimm[i,j]<-(1-LW[i,(j-1)])*pimm[(i-1),(j-1)]
+15    |  }
+16    |  }
+17    |  #for(s in 1:stocks){
+18    |  for(s in stock:stock){
+19    |  #here i index denotes smolt year
+20    |  simm[1,1,s]<-exp(-(11*MpsW[1]/Tstep))*exp(-(MpsW[1]*sealMort[1,1,1]/Tstep))     #note AU 1 sealMort for all change later
+21    |  smat[1,1,s]<-1    #not used anywhere
+22    |  for(j in 2:6){
+23    |  simm[1,j,s]<-exp(-(12*MW/Tstep))
+24    |  smat[1,j,s]<-exp(-(3*MW/Tstep))*exp(-(2*MW*sealMort[1,j,AU[s]]/Tstep))*p.ladder[(1+j-1),s]*surv_migr[(1+j-1),s]
+25    |  }
+26    |  for(i in 2:(m+proj_years)){
+27    |  simm[i,1,s]<-exp(-(11*MpsW[i]/Tstep))*exp(-(MpsW[i]*sealMort[i,1,1]/Tstep))   #note AU 1 sealMort for all change later
+28    |  smat[i,1,s]<-1    #not used anywhere
+29    |  for(j in 2:6){
+30    |  simm[i,j,s]<-exp(-(12*MW/Tstep))
+31    |  smat[i,j,s]<-exp(-(3*MW/Tstep))*exp(-(2*MW*sealMort[i,j,AU[s]]/Tstep))*p.ladder[(i+j-1),s]*surv_migr[(i+j-1),s]
+32    |  }
+33    |  }
+34    |  #EPR calculation
+35    |  for(i in 1:5){
+36    |  EPR[i,s]<-0
+37    |  EPR_M74[i,s]<-EPR[i,s]*(1-M74[i,s])
+38    |  z[i,s]<-(slope[s]*EPR_M74[i,s])/(4+slope[s]*EPR_M74[i,s])  
+39    |  }
+40    |  for(i in 6:(m+proj_years)){    
+41    |  EPR[i,s]<-pmat[i,2]*prop_fem[(i-1),1,s]*fec[1]*simm[(i-1),1,s]*smat[(i-1),2,s]        #1SW
+42    |  +pmat[i,3]*prop_fem[(i-2),2,s]*fec[2]*simm[(i-2),1,s]*simm[(i-1),2,s]*smat[(i-2),3,s]                                   #2SW
+43    |  +pmat[i,4]*prop_fem[(i-3),3,s]*fec[3]*simm[(i-3),1,s]*simm[(i-2),2,s]*simm[(i-1),3,s]*smat[(i-3),4,s]                         #3SW
+44    |  +pmat[i,5]*prop_fem[(i-4),4,s]*fec[4]*simm[(i-4),1,s]*simm[(i-3),2,s]*simm[(i-2),3,s]*simm[(i-1),4,s]*smat[(i-4),5,s]               #4SW
+45    |  +pmat[i,6]*prop_fem[(i-5),5,s]*fec[5]*simm[(i-5),1,s]*simm[(i-4),2,s]*simm[(i-3),3,s]*simm[(i-2),4,s]*simm[(i-1),5,s]*smat[(i-5),6,s]     #5SW
+46    |  EPR_M74[i,s]<-EPR[i,s]*(1-M74[i,s])
+47    |  z[i,s]<-(slope[s]*EPR_M74[i,s])/(4+slope[s]*EPR_M74[i,s])  
+48    |  }
+49    |  }
+50    |  # Northern stocks
+51    |  # prior: mean(slope)=0.04, sd_slope=0.017
+52    |  mu_a[1]~dnorm(-2.784,2.388)
+53    |  sd_a[1]~dlnorm(-0.2653,3.1529)
+54    |  tau_a[1]<-1/(sd_a[1]*sd_a[1])
+55    |  # Southern stocks
+56    |  # prior: mean(slope)=0.04, sd_slope=0.017
+57    |  mu_a[2]~dnorm(-2.784,2.388)
+58    |  sd_a[2]~dlnorm(-0.2653,3.1529)
+59    |  tau_a[2]<-1/(sd_a[2]*sd_a[2])
+60    |  # From eggs to smolts
+61    |  # Total egg production (Eggstot) is a function of sex ratio, fecundity and spawner abundance
+62    |  #for (s in 1:stocks){
+63    |  for (s in stock:stock){
+64    |  a_slope[s]~dnorm(mu_a[SR_unit[s]],tau_a[SR_unit[s]])
+65    |  logit(slope[s])<-a_slope[s]
+66    |  alphaSR[s] <- 1/slope[s]
+67    |  K[s]~dlnorm(M_R0[s],tau_R0[s])     #M_R0 and tau_R0 come from the data file K_prior
+68    |  betaSR[s] <- 1/K[s]
+69    |  for(i in 1:(6+e_delay[s]-1)){
+70    |  smoltPred[i,s]<-0
+71    |  }
+72    |  for(i in 1:5){ 
+73    |  NspWtot[i,s]<-0
+74    |  NrW_msw[i,s]<-0
+75    |  NrW_tot[i,s]<-0
+76    |  NladderW_tot[i,s]<-0
+77    |  NrRsp_msw[i,s]<-0
+78    |  NrRsp_tot[i,s]<-0
+79    |  NrAll_msw[i,s]<-0
+80    |  NrAll_tot[i,s]<-0  
+81    |  PropWgrilse[i,s]<-0
+82    |  PropWMSW[i,s]<-0
+83    |  mean_sp[i,s]<-0
+84    |  var_sp[i,s]<-0
+85    |  cv_sp[i,s]<-0
+86    |  tau_sp[i,s]<-0
+87    |  mu_sp[i,s]<-0
+88    |  sp_countX[i,s]<-0
+89    |  mean_la[i,s]<-0
+90    |  var_la[i,s]<-0
+91    |  cv_la[i,s]<-0
+92    |  tau_la[i,s]<-0
+93    |  mu_la[i,s]<-0
+94    |  eta_star[i,s]<-0
+95    |  alpha_msw[i,s]<-1
+96    |  beta_msw[i,s]<-1
+97    |  NrWmsw[i,s] <-0
+98    |  NrWtot[i,s]<-0 
+99    |  probMSW[i,s] <-0
+100   |  Eggstot[i,s]<-0
+101   |  Eggstot_M74[i,s]<-0
+102   |  M74[i,s]~dbeta(M74_alpha[i,s], M74_beta[i,s])   #M74 alpha and beta from M74 data file
+103   |  error_SR[i,s] ~dnorm(mu_SR,tau_SR)
+104   |  }
+105   |  }
+106   |  #for(s in 1:2){     #Torne, Simo
+107   |  for(s in stock:stock){
+108   |  for (i in 6:(m+proj_years)){
+109   |  Eggstot[i,s] <- (NspW[(i-1),2,s]+NspRsp[(i-1),2,s])*prop_fem[(i-1),1,s] * fec[1] +(NspW[(i-2),3,s]+NspRsp[(i-2),3,s])* prop_fem[(i-2),2,s] * fec[2] +(NspW[(i-3),4,s]+NspRsp[(i-3),4,s])* prop_fem[(i-3),3,s] * fec[3] + (NspW[(i-4),5,s]+NspRsp[(i-4),5,s]) * prop_fem[(i-4),4,s] * fec[4] + (NspW[(i-5),6,s]+NspRsp[(i-5),6,s])* prop_fem[(i-5),5,s] * fec[5]
+110   |  Eggstot_M74[i,s]<- Eggstot[i,s] * (1-M74[i,s])  #Eggs surviving after M74
+111   |  # Beverton Holt SR model for predicted smolt abundance
+112   |  #In AU 1-3 it takes 4 years from egg to smolt (1st BH smolts in yr 10)
+113   |  # In AU 4 it takes 3 years from egg to smolt (1st BH smolts in yr 9)
+114   |  smoltPred[(i+e_delay[s]),s] <-log(Eggstot_M74[i,s]/(alphaSR[s]+betaSR[s]*Eggstot_M74[i,s]))+error_SR[i,s]
+115   |  M74[i,s]~dbeta(M74_alpha[i,s], M74_beta[i,s])   #M74 alpha and beta from M74 data file
+116   |  error_SR[i,s] ~dnorm(mu_SR,tau_SR)
+117   |  NspWtot[i,s] <- NspW[(i-1), 2,s]+NspW[(i-2), 3,s] +NspW[(i-3), 4,s] +NspW[(i-4), 5,s] + NspW[(i-5),6,s]             +NspRsp[(i-1), 2,s]+NspRsp[(i-2), 3,s] +NspRsp[(i-3), 4,s] + NspRsp[(i-4), 5,s] +NspRsp[(i-5), 6,s] 
+118   |  NrW_msw[i,s] <- NrW[(i-2),3,s] +NrW[(i-3),4,s] +NrW[(i-4),5,s] +NrW[(i-5),6,s]
+119   |  NrW_tot[i,s] <- NrW[(i-1),2,s]+NrW_msw[i,s] 
+120   |  NladderW_tot[i,s]<- NladderW[(i-1),2,s]+NladderW[(i-2),3,s]+NladderW[(i-3),4,s]+NladderW[(i-4),5,s]+NladderW[(i-5),6,s] 
+121   |  NrRsp_msw[i,s]<-NrRsp[(i-2),3,s]+ NrRsp[(i-3),4 ,s]+NrRsp[(i-4),5,s]+NrRsp[(i-5), 6,s]  
+122   |  NrRsp_tot[i,s]<-NrRsp[(i-1),2,s]+NrRsp_msw[i,s]
+123   |  NrAll_msw[i,s] <- NrW_msw[i,s]+NrRsp_msw[i,s] 
+124   |  NrAll_tot[i,s] <- NrW_tot[i,s]+NrRsp_tot[i,s]  #NrWtot1 winbugs (1000s)
+125   |  PropWgrilse[i,s]<-NrW[(i-1), 2,s] /(NrW[(i-1), 2,s]+NrRsp[(i-1), 2,s])   #propn of grilse that are wild
+126   |  PropWMSW[i,s]<-NrW_msw[i,s]/NrAll_msw[i,s]   #propn MSW wild
+127   |  NrWtot[i,s] <- round((NrW_tot[i,s]+NrRsp_tot[i,s])*1000)+1  
+128   |  #doesn't make a diff for Ume here if NrW or NladderW used to calc below ratio as p.ladder same all ages 
+129   |  probMSW[i,s] <- NrAll_msw[i,s]/NrAll_tot[i,s] 
+130   |  }
+131   |  for(i in smolt_year[s]:(m+2)){
+132   |  SmoltWobs[i,s]~dlnorm(smoltPred[i,s],tau_SmoltW[i,s])
+133   |  R0[i,s]<-(K[s]*(EPR_M74[(i-e_delay[s]),s]-alphaSR[s]))/EPR_M74[(i-e_delay[s]),s] 
+134   |  }
+135   |  }
+136   |  #   removed, not needed for tornio only
+137   |  # for(s in 3:stocks){
+138   |  #     for (i in 6:(m+proj_years)){
+139   |  # 
+140   |  #         Eggstot[i,s] <- NspW[(i-1),2,s]* prop_fem[(i-1),1,s] * fec[1] + NspW[(i-2),3,s]* prop_fem[(i-2),2,s] * fec[2] + NspW[(i-3),4,s]* prop_fem[(i-3),3,s] * fec[3] + NspW[(i-4),5,s] * prop_fem[(i-4),4,s] * fec[4] + NspW[(i-5),6,s]* prop_fem[(i-5),5,s] * fec[5]
+141   |  #         
+142   |  #         Eggstot_M74[i,s]<- Eggstot[i,s] * (1-M74[i,s])  #Eggs surviving after M74
+143   |  #  
+144   |  #         # Beverton Holt SR model for predicted smolt abundance
+145   |  #         #In AU 1-3 it takes 4 years from egg to smolt (1st BH smolts in yr 10)
+146   |  #         # In AU 4 it takes 3 years from egg to smolt (1st BH smolts in yr 9)
+147   |  #         
+148   |  #         smoltPred[(i+e_delay[s]),s] <-log(Eggstot_M74[i,s]/(alphaSR[s]+betaSR[s]*Eggstot_M74[i,s]))+error_SR[i,s]   
+149   |  #         M74[i,s]~dbeta(M74_alpha[i,s], M74_beta[i,s])   #M74 alpha and beta from M74 data file
+150   |  #         error_SR[i,s] ~dnorm(mu_SR,tau_SR)
+151   |  #         
+152   |  #         NspWtot[i,s] <- NspW[(i-1), 2,s] +NspW[(i-2), 3,s] +NspW[(i-3), 4,s] +NspW[(i-4), 5,s] + NspW[(i-5),6,s] 
+153   |  #        
+154   |  #         NrW_msw[i,s] <- NrW[(i-2),3,s] +NrW[(i-3),4,s] +NrW[(i-4),5,s] +NrW[(i-5),6,s]
+155   |  #         NrW_tot[i,s] <- NrW[(i-1),2,s]+NrW_msw[i,s]  #NrWtot1 winbugs (1000s)
+156   |  #         NladderW_tot[i,s]<- NladderW[(i-1),2,s]+NladderW[(i-2),3,s]+NladderW[(i-3),4,s]+NladderW[(i-4),5,s]+NladderW[(i-5),6,s] 
+157   |  #         
+158   |  #         
+159   |  #         NrRsp_msw[i,s]<-0  
+160   |  #         NrRsp_tot[i,s]<-0
+161   |  #         
+162   |  #         NrAll_msw[i,s] <- NrW_msw[i,s]+NrRsp_msw[i,s] 
+163   |  #         NrAll_tot[i,s] <- NrW_tot[i,s]+NrRsp_tot[i,s]  
+164   |  #    
+165   |  #         NrWtot[i,s] <- round((NrW_tot[i,s]+NrRsp_tot[i,s])*1000)+1    
+166   |  #         #doesn't make a diff for Ume here if NrW or NladderW used to calc below ratio as p.ladder same all ages 
+167   |  #        probMSW[i,s] <- NrAll_msw[i,s]/NrAll_tot[i,s] 
+168   |  #      
+169   |  #         PropWgrilse[i,s]<-0
+170   |  #         PropWMSW[i,s]<-0
+171   |  # 
+172   |  #  
+173   |  #     }
+174   |  #     for(i in smolt_year[s]:(m+2)){
+175   |  #         SmoltWobs[i,s]~dlnorm(smoltPred[i,s],tau_SmoltW[i,s])
+176   |  #         R0[i,s]<-(K[s]*(EPR_M74[(i-e_delay[s]),s]-alphaSR[s]))/EPR_M74[(i-e_delay[s]),s] 
+177   |  #     }
+178   |  # }
+179   |  #tau_SR ~ dlnorm(0,10)
+180   |  cv_SR~dlnorm(-1.5,2)
+181   |  tau_SR<-1/log(cv_SR*cv_SR+1)
+182   |  mu_SR<- -0.5/tau_SR
+183   |  #index is number of sea winters
+184   |  fec[1]~dlnorm(8.266503956,54.78192169)
+185   |  fec[2]~dlnorm(9.139093315,168.451323)
+186   |  fec[3]~dlnorm(9.504315997,109.3565359)
+187   |  fec[4]~dlnorm(9.505447712,61.70147645)
+188   |  fec[5]~dlnorm(9.68393554,38.95507182)
+189   |  # Stocked as parr/smolts
+190   |  #mu_Parr, tau_Parr, Smolt_Rsp from ReleaseSimoTorne data file
+191   |  #for(s in 1:stocks){ 
+192   |  for(s in stock:stock){ 
+193   |  for (i in 1:m){ 
+194   |  Parr[i,s] ~dlnorm(mu_Parr[i,s], tau_Parr[i,s])  
+195   |  }
+196   |  for (i in (m+1):(m+proj_years+2)){ 
+197   |  Parr[i,s]<-0
+198   |  }
+199   |  for (i in 1:(m-1)){ 
+200   |  SmoltRsp[i,s] <-  Smolt_Rsp[i,s]      #was mu_SmoltT and mu_SmoltS
+201   |  }
+202   |  # Number of smolt releases in assessment year are assumed the same as year before
+203   |  SmoltRsp[m,s] <- SmoltRsp[(m-1),s]
+204   |  }
+205   |  # Smolt abundance
+206   |  # Fit the latter part of the time series to the prior for the mean amount of observed
+207   |  # smolts. => smoltPred gets updated and contains afterwards information from both
+208   |  # model predicted amount of smolts (SR-part) and the mean amount of smolts based 
+209   |  # on the smolt mark-recapture model.
+210   |  # Data_SmoltsW.odc
+211   |  #for (s in 1:stocks){
+212   |  for (s in stock:stock){
+213   |  # Early part of the time series, before the whole life history has gone through:
+214   |  for (i in 1:(smolt_year[s]-1)){
+215   |  R0[i,s]<-exp(M_R0[s])
+216   |  SmoltW[i,s] ~ dlnorm(mu_SmoltW[i,s], tau_SmoltW[i,s])T(0.0001,3000000)  # mu_SmoltW and tau_SmoltW from Data_SmoltsW.odc
+217   |  }
+218   |  # From year 10-> we use predicted smolt abundance:
+219   |  for (i in smolt_year[s]:(m+proj_years+2)){
+220   |  SmoltW[i,s] <- exp(smoltPred[i,s])
+221   |  }
+222   |  #     for (i in 1:(m+proj_years)){
+223   |  #     IBSFC[i,s] <- SmoltW[i,s]/ R0[i,s]  
+224   |  #     prob.IBSFC50[i,s] <- step(IBSFC[i,s] - 0.5)
+225   |  #     prob.IBSFC75[i,s] <- step(IBSFC[i,s] - 0.75)
+226   |  #     prob.IBSFC100[i,s] <- step(IBSFC[i,s] - 1)
+227   |  #   }
+228   |  ####################################Population dynamics########################################
+229   |  # Ncc: number of salmon on May 1st
+230   |  # Ndo: number of salmon on Jan 1st (imm)
+231   |  # Nl: number of salmon on Feb 1st (imm)
+232   |  # Nt: number of salmon on April 1st (imm) 
+233   |  # Nc: number of salmon in coastal areas on June 1st (mat)
+234   |  # Nr: number of salmon in the river on Aug 1st (mat)
+235   |  # Nsp: number of spawners on Oct 1st (mat)
+236   |  #surv[,,1,] #natural mortality: 1 month for j= 1 (post-smolts), 0 months for j=2-6
+237   |  #surv[,,2,] #natural mortality + longline fishery: 2 months for j= 1 (post-smolts) and j=2-6 (immature)
+238   |  #surv[,,3,] #natural mortality at sea: 0 months for j=1, 8 months for j=2-6 (immature)
+239   |  #surv[,,4,] #natural mortality + offshore driftnet fishery: 1 month for j= 1 (post-smolts) and j=2-6 (immature)
+240   |  #surv[,,5,] #natural mortality + river fishery: 1 month for j= 1 (post-smolts), 2 months for j=2-6 (mature)
+241   |  #surv[,,6,] #natural mortality + offshore trolling fishery: 1 month for j= 1 (post-smolts) and j=2-6 (immature)
+242   |  #survc[,,]  #natural mortality + coastal trap net and gillnet fisheries: 6 months for j= 1 (post-smolts), 2 months for j=2-6 (mature)
+243   |  #survdc[,,] #natural mortality + coastal driftnet  fishery: 0 months for j=1, 1 month for j=2-6 (mature)
+244   |  for (i in 1:(m+proj_years)){              
+245   |  #Post-smolts
+246   |  # Fish in the river in  the beginning of June in year 1 
+247   |  NrW[i,1,s] <- SmoltW[i,s]*surv[i,1,1,1]*kE[i,1,1]    #SmoltW beginning of May (surv[i,1,1,1] 1 month)
+248   |  # Coastal fish in the beginning of July in year 1      
+249   |  NcW[i,1,s] <- NrW[i,1,s]*surv.riv[i,1,s]*kE[i,1,5]
+250   |  # Offshore salmon in the beginning of January in year 1 (calendar year 2)
+251   |  NdoW[i,1,s] <- NcW[i,1,s]*survc[i,1,1,AU[s]]*kEc[i,1] 
+252   |  # Offshore salmon in the beginning of February in year 1  (calendar year 2)
+253   |  NlW[i,1,s] <- NdoW[i,1,s]*surv[i,1,4,1]*kE[i,1,4]
+254   |  # Offshore salmon in the beginning of April in year 1  (calendar year 2)
+255   |  NtW[i,1,s] <- NlW[i,1,s]*surv[i,1,2,1]*kE[i,1,2]
+256   |  NccW[i,1,s]<-0
+257   |  NdcW[i,1,s]<-0  
+258   |  NdcWI[i,1,s]<-0
+259   |  NladderW[i,1,s]<-0  
+260   |  NspW[i,1,s]<-0
+261   |  for (j in 2:6){ 
+262   |  # Offshore salmon in the beginning of May in year 2-6  
+263   |  #NccW[i,j,s]<-NlW[i,(j-1),s]*surv[i,(j-1),2,1]*kE[i,(j-1),2]
+264   |  NccW[i,j,s]<-NtW[i,(j-1),s]*surv[i,(j-1),6,1]*kE[i,(j-1),6] 
+265   |  #Immature salmon in coastal areas in the beginning of May    
+266   |  NdcWI[i,j,s] <- NccW[i,j,s]* (1-LW[(i+j-1),(j-1)])  #index 1 of LW is current year, 2 of LW is sea winters  
+267   |  # Offshore salmon in the beginning of January 
+268   |  NdoW[i,j,s] <- NdcWI[i,j,s]*surv[i,j,3,1]*kE[i,j,3] # Immature 
+269   |  #Offshore salmon in the beginning of February
+270   |  NlW[i,j,s] <- NdoW[i,j,s]*surv[i,j,4,1]*kE[i,j,4]   #Immature 
+271   |  # Offshore salmon in the beginning of April        
+272   |  NtW[i,j,s] <- NlW[i,j,s]*surv[i,j,2,1]*kE[i,j,2]   
+273   |  #Salmon in coastal areas in the beginning of May.     #Mature
+274   |  NdcW[i,j,s] <- NccW[i,j,s]*LW[(i+j-1),(j-1)]   #Maturation
+275   |  # Salmon in the coastal area in the beginning of June 
+276   |  NcW[i,j,s] <- NdcW[i,j,s]*survdc[i,j,1,AU[s]]*kEdc[i,j] 
+277   |  # Salmon in the river in the beginning of August                  #Mature
+278   |  NrW[i,j,s] <- NcW[i,j,s]*survc[i,j,1,AU[s]]*kEc[i,j] 
+279   |  # Number of salmon available to river fishery and spawning        #Mature
+280   |  #added to deal with different situation in Ume, p.ladder=1 for all rivers except Ume
+281   |  NladderW[i,j,s]<-NrW[i,j,s]*p.ladder[(i+j-1),s]   
+282   |  # Number of spawners in the river in the beginning of October    #Mature
+283   |  NspW[i,j,s]<-NladderW[i,j,s]*surv.riv[i,j,s]*surv_migr[(i+j-1),s]*kE[i,j,5]      
+284   |  }
+285   |  }  
+286   |  } #s
+287   |  for (i in 1:(m+proj_years)){             
+288   |  #for(s in 1:2){    #Torne, Simo
+289   |  for(s in stock:stock){    
+290   |  #Post-smolts
+291   |  # Fish in the river in  the beginning of June in year 1 
+292   |  NrRsp[i,1,s] <- (SmoltRsp[i,s] + Parr[i,s])*surv[i,1,1,2]*kE[i,1,1]
+293   |  # Coastal fish in the beginning of July in year 1      
+294   |  #NcRsp[i,1,s] <- NrRsp[i,1,s]*(1-HrW[i,1])*exp(-MpsR[i]*sealMort[i,1,1]/Tstep)*kE[i,1,5]
+295   |  NcRsp[i,1,s] <- NrRsp[i,1,s]*(1-HrW[i,1]*rivHR[(i+1-1),s])*exp(-MpsR[i]*sealMort[i,1,1]/Tstep)*kE[i,1,5]
+296   |  # Offshore salmon in the beginning of January in year 1 (calendar year 2)
+297   |  NdoRsp[i,1,s] <- NcRsp[i,1,s]*survc[i,1,2,AU[s]]*kEc[i,1]     
+298   |  # Offshore salmon in the beginning of February in year 1  (calendar year 2)
+299   |  NlRsp[i,1,s] <- NdoRsp[i,1,s]*surv[i,1,4,2]*kE[i,1,4]  
+300   |  # Offshore salmon in the beginning of April in year 1  (calendar year 2)
+301   |  NtRsp[i,1,s] <- NlRsp[i,1,s]*surv[i,1,2,2]*kE[i,1,2]  
+302   |  NccRsp[i,1,s]<-0
+303   |  NdcRsp[i,1,s]<-0  
+304   |  NdcRspI[i,1,s]<-0  
+305   |  NladderRsp[i,1,s]<-0
+306   |  NspRsp[i,1,s]<-0
+307   |  for (j in 2:6){ 
+308   |  # Offshore salmon in the beginning of May in year 2-6  
+309   |  #NccRsp[i,j,s] <- NlRsp[i,(j-1),s]*surv[i,(j-1),2,2]*kE[i,(j-1),2]  
+310   |  NccRsp[i,j,s] <- NtRsp[i,(j-1),s]*surv[i,(j-1),6,2]*kE[i,(j-1),6]  
+311   |  #Immature salmon in coastal areas in the beginning of May    
+312   |  NdcRspI[i,j,s] <-NccRsp[i,j,s]*(1-LR[(i+j-1),(j-1)])
+313   |  # Offshore salmon in the beginning of January 
+314   |  NdoRsp[i,j,s]<- NdcRspI[i,j,s]*surv[i,j,3,2]*kE[i,j,3]    
+315   |  #Offshore salmon in the beginning of February
+316   |  NlRsp[i,j,s] <- NdoRsp[i,j,s]*surv[i,j,4,2]*kE[i,j,4] 
+317   |  #Offshore salmon in the beginning of April
+318   |  NtRsp[i,j,s] <- NlRsp[i,j,s]*surv[i,j,2,2]*kE[i,j,2] 
+319   |  #Salmon in coastal areas in the beginning of May.     #Mature
+320   |  NdcRsp[i,j,s] <- NccRsp[i,j,s]*LR[(i+j-1),(j-1)]            
+321   |  # Salmon in the coastal area in the beginning of June 
+322   |  NcRsp[i,j,s] <- NdcRsp[i,j,s]*survdc[i,j,2,AU[s]]*kEdc[i,j]          
+323   |  # Salmon in the river in the beginning of August              #Mature
+324   |  NrRsp[i,j,s] <- NcRsp[i,j,s]*survc[i,j,2,AU[s]]*kEc[i,j]  
+325   |  # Number of salmon available to river fishery and spawning         #Mature
+326   |  #added to deal with different situation in Ume. p.ladder=1 for all rivers except Ume
+327   |  NladderRsp[i,j,s] <- NrRsp[i,j,s]*p.ladder[(i+j-1),s]     
+328   |  # Number of spawners in the river in the beginning of October    #Mature
+329   |  #NspRsp[i,j,s] <- NladderRsp[i,j,s]*(1-HrW[i,j])* exp(-2*MR/Tstep)*surv_migr[(i+j-1),s]*kE[i,j,5]
+330   |  NspRsp[i,j,s] <- NladderRsp[i,j,s]*(1-HrW[i,j]*rivHR[(i+j-1),s])* exp(-2*MR/Tstep)*surv_migr[(i+j-1),s]*kE[i,j,5]
+331   |  }
+332   |  }
+333   |  }
+334   |  #for(s in 1:AUS){              #s index denotes AU here 
+335   |  for(s in stock:stock){              #s index denotes AU here 1 for tornio
+336   |  for (i in 1:m){ 
+337   |  #Post-smolts
+338   |  # Fish in the river in  the beginning of June in year 1 
+339   |  SmoltR[i,s] <- SmoltRdata[i,s] * Usmolt               #SmoltRdata from SmoltR data file Usmolt from
+340   |  NrR[i,1,s] <- SmoltR[i,s]*surv[i,1,1,2]*kE[i,1,1]                                                      
+341   |  TrW[i,1,s] <- rel_W[i,s]*surv[i,1,1,1]*kE[i,1,1]       #tagged wild salmon releases AU1  Beginning of July
+342   |  TrR[i,1,s] <- rel_R[i,s]*surv[i,1,1,2]*kE[i,1,1]     #tagged reared salmon NB s index stands for AU 
+343   |  TrRsp[i,1,s] <- rel_Rsp[i,s]*surv[i,1,1,2]*kE[i,1,1] #tagged reared-spawned salmon NB s index stands for AU 
+344   |  # Coastal fish in the beginning of July in year 1
+345   |  NcR[i,1,s] <- NrR[i,1,s]*surv[i,1,5,2]*kE[i,1,5]
+346   |  TcW[i,1,s] <- TrW[i,1,s]*surv[i,1,5,1]*kE[i,1,5]#rivHR change needed? surv.riv[i,1,AU_stock[s]]?? or leave as is....see process errors     
+347   |  TcR[i,1,s] <- TrR[i,1,s]*surv[i,1,5,2]*kE[i,1,5]      
+348   |  TcRsp[i,1,s] <- TrRsp[i,1,s]*(1-HrW[i,1])*exp(-MpsR[i]*sealMort[i,1,1]/Tstep)*kE[i,1,5]  
+349   |  # Offshore salmon in the beginning of January in year 1
+350   |  NdoR[i,1,s] <- NcR[i,1,s]*survc[i,1,2,s]*kEc[i,1]
+351   |  TdoW[i,1,s] <- TcW[i,1,s]*survc[i,1,1,s]*kEc[i,1]
+352   |  TdoR[i,1,s] <- TcR[i,1,s]*survc[i,1,2,s]*kEc[i,1] 
+353   |  TdoRsp[i,1,s] <- TcRsp[i,1,s]*survc[i,1,2,s]*kEc[i,1] 
+354   |  # Offshore salmon in the beginning of February in year 1
+355   |  NlR[i,1,s] <- NdoR[i,1,s]*surv[i,1,4,2]*kE[i,1,4]
+356   |  # Offshore salmon in the beginning of April in year 1
+357   |  NtR[i,1,s] <- NlR[i,1,s]*surv[i,1,2,2]*kE[i,1,2]   
+358   |  TlW[i,1,s] <- TdoW[i,1,s]*surv[i,1,4,1]*kE[i,1,4]
+359   |  TlR[i,1,s] <- TdoR[i,1,s]*surv[i,1,4,2]*kE[i,1,4]
+360   |  TlRsp[i,1,s] <- TdoRsp[i,1,s]*surv[i,1,4,2]*kE[i,1,4]
+361   |  NccR[i,1,s]<-0
+362   |  TccW[i,1,s]<-0
+363   |  TccR[i,1,s]<-0
+364   |  TccRsp[i,1,s]<-0
+365   |  NdcR[i,1,s]<-0
+366   |  TdcW[i,1,s]<-0 
+367   |  TdcR[i,1,s]<-0 
+368   |  TdcRsp[i,1,s]<-0
+369   |  NdcRI[i,1,s]<-0
+370   |  TdcWI[i,1,s]<-0 
+371   |  TdcRI[i,1,s]<-0 
+372   |  TdcRspI[i,1,s]<-0
+373   |  NspR[i,1,s]<-0
+374   |  TspW[i,1,s]<-0
+375   |  TspR[i,1,s]<-0
+376   |  TspRsp[i,1,s]<-0
+377   |  for (j in 2:6){ 
+378   |  # Offshore salmon in the beginning of May in year 2
+379   |  #NccR[i,j,s] <- NlR[i,(j-1),s]*surv[i,(j-1),2,2]*kE[i,(j-1),2]
+380   |  NccR[i,j,s] <- NtR[i,(j-1),s]*surv[i,(j-1),6,2]*kE[i,(j-1),6]
+381   |  TccW[i,j,s]<-TlW[i,(j-1),s]*surv[i,(j-1),2,1]*kE[i,(j-1),2]
+382   |  TccR[i,j,s] <-TlR[i,(j-1),s]*surv[i,(j-1),2,2]*kE[i,(j-1),2]
+383   |  TccRsp[i,j,s] <-TlRsp[i,(j-1),s]*surv[i,(j-1),2,2]*kE[i,(j-1),2]
+384   |  ##Immature salmon in coastal areas in the beginning of May       
+385   |  NdcRI[i,j,s] <- NccR[i,j,s]*(1-LR[(i+j-1),(j-1)])
+386   |  TdcWI[i,j,s] <- TccW[i,j,s]*(1-LW[(i+j-1),(j-1)])
+387   |  TdcRI[i,j,s] <- TccR[i,j,s]*(1-LR[(i+j-1),(j-1)])
+388   |  TdcRspI[i,j,s] <- TccRsp[i,j,s]*(1-LR[(i+j-1),(j-1)])
+389   |  # Offshore salmon in the beginning of January 
+390   |  NdoR[i,j,s] <-  NdcRI[i,j,s]*surv[i,j,3,2]*kE[i,j,3]
+391   |  TdoW[i,j,s] <- TdcWI[i,j,s]*surv[i,j,3,1]*kE[i,j,3]
+392   |  TdoR[i,j,s] <- TdcRI[i,j,s]*surv[i,j,3,2]*kE[i,j,3]
+393   |  TdoRsp[i,j,s]<- TdcRspI[i,j,s]*surv[i,j,3,2]*kE[i,j,3]
+394   |  # Offshore salmon in the beginning of February
+395   |  NlR[i,j,s] <- NdoR[i,j,s]*surv[i,j,4,2]*kE[i,j,4]
+396   |  TlW[i,j,s] <- TdoW[i,j,s]*surv[i,j,4,1]*kE[i,j,4] 
+397   |  TlR[i,j,s] <- TdoR[i,j,s]*surv[i,j,4,2]*kE[i,j,4]
+398   |  TlRsp[i,j,s] <- TdoRsp[i,j,s]*surv[i,j,4,2]*kE[i,j,4]
+399   |  # Offshore salmon in the beginning of April
+400   |  NtR[i,j,s] <- NlR[i,j,s]*surv[i,j,2,2]*kE[i,j,2] 
+401   |  #Salmon in coastal areas in the beginning of May.     #Mature
+402   |  NdcR[i,j,s] <- NccR[i,j,s]*LR[(i+j-1),(j-1)]
+403   |  TdcW[i,j,s] <- TccW[i,j,s]*LW[(i+j-1),(j-1)]                 
+404   |  TdcR[i,j,s] <- TccR[i,j,s]*LR[(i+j-1),(j-1)]
+405   |  TdcRsp[i,j,s] <- TccRsp[i,j,s]*LR[(i+j-1),(j-1)]  
+406   |  # Salmon in the coastal area in the beginning of June 
+407   |  NcR[i,j,s] <- NdcR[i,j,s]*survdc[i,j,2,s]*kEdc[i,j]
+408   |  TcW[i,j,s] <- TdcW[i,j,s]*survdc[i,j,1,s]*kEdc[i,j]         
+409   |  TcR[i,j,s] <- TdcR[i,j,s]*survdc[i,j,2,s]*kEdc[i,j]
+410   |  TcRsp[i,j,s] <- TdcRsp[i,j,s]*survdc[i,j,2,s]*kEdc[i,j]
+411   |  # Salmon in the river in the beginning of August              #Mature
+412   |  NrR[i,j,s]<- NcR[i,j,s]*survc[i,j,2,s]*kEc[i,j]
+413   |  TrW[i,j,s] <- TcW[i,j,s]*survc[i,j,1,s]*kEc[i,j]
+414   |  TrR[i,j,s]<- TcR[i,j,s]*survc[i,j,2,s]*kEc[i,j]             #s stands for AU here
+415   |  TrRsp[i,j,s] <- TcRsp[i,j,s]*survc[i,j,2,s]*kEc[i,j] 
+416   |  # Number of spawners in the river in the beginning of October    #Mature
+417   |  NspR[i,j,s]  <- NrR[i,j,s]*surv[i,j,5,2]*kE[i,j,5]
+418   |  TspW[i,j,s]<-TrW[i,j,s]*surv[i,j,5,1]*kE[i,j,5]   #rivHR change needed? see TcW above
+419   |  TspR[i,j,s]  <- TrR[i,j,s]*surv[i,j,5,2]*kE[i,j,5]
+420   |  TspRsp[i,j,s] <- TrRsp[i,j,s]*(1-HrW[i,j])* exp(-2*MR/Tstep) *kE[i,j,5]
+421   |  }
+422   |  }
+423   |  }
+424   |  for (i in 1:m){                    ### Tagging data likelihoods ### 
+425   |  # for(j in 1:1){
+426   |  #   HlW[i,j]<-1-exp(-qlW1[1]*El[i,j]) 
+427   |  #   HlR[i,j]<-1-exp(-qlR1[1]*El[i,j]) 
+428   |  # }
+429   |  #  for(j in 2:5){
+430   |  #   HlW[i,j]<-1-exp(-qlW[i,j]*El[i,j]) 
+431   |  #   HlR[i,j]<-1-exp(-qlR[i,j]*El[i,j]) 
+432   |  # }   
+433   |  for(j in 1:5){     #check - seems ok because all immature fish
+434   |  # Offshore driftnet fishery
+435   |  TdoWtot[i,j]<- sum(TdoW[i,j, ])  
+436   |  TdoRtot[i,j] <- sum(TdoR[i,j, ]) + sum(TdoRsp[i,j, ])
+437   |  HdoW[i,j] <- 1-exp(-qdW[i,j]*Edo[i,j]) 
+438   |  HdoR[i,j] <- 1-exp(-qdR[i,j]*Edo[i,j]) 
+439   |  cdo_predW[i,j] <- TdoWtot[i,j]*HdoW[i,j]*reportd*Tretain        
+440   |  psi_doW[i,j]<-rdW[j]/(rdW[j]+cdo_predW[i,j])
+441   |  cdo_ObsW[i,j] ~ dnegbin(psi_doW[i,j], rdW[j])
+442   |  cdo_predR[i,j] <- TdoRtot[i,j]*HdoR[i,j]*reportd*Tretain      
+443   |  psi_doR[i,j]<-rdR[j]/(rdR[j]+cdo_predR[i,j])
+444   |  cdo_ObsR[i,j] ~ dnegbin(psi_doR[i,j], rdR[j])
+445   |  # Offshore longline fishery 
+446   |  TlWtot[i,j]<- sum(TlW[i,j, ]) 
+447   |  TlRtot[i,j] <- sum(TlR[i,j, ]) + sum(TlRsp[i,j, ])
+448   |  HlW[i,j]<-1-exp(-qlW[i,j]*El[i,j]) 
+449   |  HlR[i,j]<-1-exp(-qlR[i,j]*El[i,j]) 
+450   |  cl_predW[i,j] <- TlWtot[i,j]*HlW[i,j] * reportl             
+451   |  psi_lW[i,j]<-rlW[j]/(rlW[j]+cl_predW[i,j])               
+452   |  cl_ObsW[i,j] ~ dnegbin(psi_lW[i,j], rlW[j])
+453   |  cl_predR[i,j] <- TlRtot[i,j]*HlR[i,j] * reportl  #changed to HlR from HlW for j=2:6 in the WinBUGS code       
+454   |  psi_lR[i,j]<-rlR[j]/(rlR[j]+cl_predR[i,j])
+455   |  cl_ObsR[i,j] ~ dnegbin(psi_lR[i,j], rlR[j])
+456   |  ################## Total catch calculations ######################
+457   |  #         NdoW_all[i,j]<-sum(NdoW[i,j,1:stocks])
+458   |  #         NlW_all[i,j]<- sum(NlW[i,j,1:stocks])
+459   |  #     NtW_all[i,j]<- sum(NtW[i,j,1:stocks]) 
+460   |  #         
+461   |  #         NdoR_all[i,j]<- sum(NdoR[i,j,])+sum(NdoRsp[i,j,1:2])
+462   |  #         NlR_all[i,j]<- sum(NlR[i,j,])+sum(NlRsp[i,j,1:2])
+463   |  #         NtR_all[i,j]<- sum(NtR[i,j,])+sum(NtRsp[i,j,1:2])
+464   |  NdoW_all[i,j]<-sum(NdoW[i,j,])
+465   |  NlW_all[i,j]<- sum(NlW[i,j,])
+466   |  NtW_all[i,j]<- sum(NtW[i,j,]) 
+467   |  NdoR_all[i,j]<- sum(NdoR[i,j,])+sum(NdoRsp[i,j,])
+468   |  NlR_all[i,j]<- sum(NlR[i,j,])+sum(NlRsp[i,j,])
+469   |  NtR_all[i,j]<- sum(NtR[i,j,])+sum(NtRsp[i,j,])
+470   |  # Estimated catches of non-returning salmon in the offshore fishery
+471   |  nco_W[i,j] <- PropCW[i] * (HdoW[i,j]*NdoW_all[i,j]+HlW[i,j]*NlW_all[i,j])   
+472   |  nco_R[i,j] <- PropCR[i] * (HdoR[i,j]*NdoR_all[i,j]+HlR[i,j]*NlR_all[i,j])   
+473   |  nco[i,j] <- nco_W[i,j] + nco_R[i,j] 
+474   |  # Estimated catches separately for trolling, longline and driftnet 
+475   |  nc_otr[i,j] <- PropCW[i] * (HtW[i,j]*NtW_all[i,j]) + PropCR[i] *(HtR[i,j]*NtR_all[i,j])    #PropCW and PropCR from PropAU16 data file  
+476   |  nc_oll[i,j] <- PropCW[i] * (HlW[i,j]*NlW_all[i,j]) + PropCR[i] *(HlR[i,j]*NlR_all[i,j])    #PropCW and PropCR from PropAU16 data file
+477   |  nc_odn[i,j] <- PropCW[i] * (HdoW[i,j]*NdoW_all[i,j]) + PropCR[i] * (HdoR[i,j]*NdoR_all[i,j]) 
+478   |  }    
+479   |  HdcW[i,1]<-0
+480   |  HdcR[i,1]<-0
+481   |  for(j in 2:6){ 
+482   |  HdcW[i,j] <- 1-exp(-qdW[i,j-1]*Edc[i,j])   #WinBUGS j 2:6  HdcW[i,j-1] <- 1-exp(-qdW[j-1]*Edc[i,j]) 
+483   |  HdcR[i,j] <- 1-exp(-qdR[i,j-1]*Edc[i,j]) 
+484   |  cdc_ObsW[i,j] ~ dnegbin(psi_dcW[i,j], rdW[j])
+485   |  cdc_ObsR[i,j] ~ dnegbin(psi_dcR[i,j], rdR[j]) 
+486   |  }
+487   |  for (j in 1:6){
+488   |  # Coastal driftnet  fishery         
+489   |  TdcWtot[i,j]<- sum(TdcW[i,j, ])    
+490   |  TdcRtot[i,j] <- sum(TdcR[i,j, ]) + sum(TdcRsp[i,j, ])     
+491   |  cdc_predW[i,j] <- TdcWtot[i,j]*HdcW[i,j]*reportd*Tretain           
+492   |  psi_dcW[i,j]<-rdW[j]/(rdW[j]+cdc_predW[i,j])
+493   |  cdc_predR[i,j] <- TdcRtot[i,j]*HdcR[i,j]*reportd*Tretain     
+494   |  psi_dcR[i,j]<-rdR[j]/(rdR[j]+cdc_predR[i,j])
+495   |  # River fishery
+496   |  TrWtot[i,j]<- sum(TrW[i,j, ])  # Sum of tagged salmon over k areas
+497   |  TrRsptot[i,j]<- sum(TrRsp[i,j, ])  # Sum of tagged salmon over k areas
+498   |  TrRtot[i,j] <- sum(TrR[i,j, ]) # Sum of tagged salmon over k areas
+499   |  cr_predW[i,j] <- TrWtot[i,j]* HrW[i,j]* reportrW      #rivHR change needed?   
+500   |  psi_rW[i,j]<-rrW[j]/(rrW[j]+cr_predW[i,j])
+501   |  cr_ObsW[i,j] ~ dnegbin(psi_rW[i,j], rrW[j])
+502   |  cr_predRsp[i,j] <- TrRsptot[i,j]*HrW[i,j]* reportrW   #rivHR change needed?             # note uses reared surv but wild HR        
+503   |  psi_rRsp[i,j]<-rrRsp[j]/(rrRsp[j]+cr_predRsp[i,j])
+504   |  cr_ObsRsp[i,j] ~ dnegbin(psi_rRsp[i,j], rrRsp[j])
+505   |  cr_predR[i,j] <- TrRtot[i,j]*HrR[i,j]*reportrR        
+506   |  psi_rR[i,j]<-rrR[j]/(rrR[j]+cr_predR[i,j])
+507   |  cr_ObsR[i,j] ~ dnegbin(psi_rR[i,j], rrR[j])
+508   |  # Coastal fishery
+509   |  cc_predW[i,j,1] <- HcW[i,j,1]*reportc*reportcAdj[i,j]* TcW[i,j,1]   #reportcAdj from the Rest data file        
+510   |  psi_cW[i,j,1]<-rcW[j]/(rcW[j]+cc_predW[i,j,1])
+511   |  cc_ObsW[i,j,1] ~ dnegbin(psi_cW[i,j,1], rcW[j])              # MSW AU 1
+512   |  #for(au in 1:AUS){   
+513   |  for(au in stock:stock){   
+514   |  TcRtot[i,j,au]<- TcR[i,j,au]+TcRsp[i,j,au]
+515   |  HcW[i,j,au] <- (1-exp(-(F_sea[i,j,1,au])))
+516   |  HcR[i,j,au] <- (1-exp(-(F_sea[i,j,2,au])))
+517   |  cc_predR[i,j,au] <- HcR[i,j,au]*reportc*reportcAdj[i,j] * TcRtot[i,j,au]        
+518   |  psi_cR[i,j,au]<-rcR[j]/(rcR[j]+cc_predR[i,j,au])
+519   |  }
+520   |  #for(au in 1:3){ 
+521   |  for(au in stock:stock){ 
+522   |  cc_ObsR[i,j,au] ~ dnegbin(psi_cR[i,j,au], rcR[j])
+523   |  }
+524   |  ################## Total catch calculations ######################
+525   |  # Morrum and Eman not included why not included in river?
+526   |  #NrW_all[i,j]<- sum(NladderW[i,j,avail_r]*(HrW[i,j]*rivHR[(i+j-1),avail_r]))+sum(NladderRsp[i,j,1:2]*(HrW[i,j]*rivHR[(i+j-1),1:2]))  #avail_r 1:13, 16 
+527   |  NrW_all[i,j]<- sum(NladderW[i,j,stock:stock]*(HrW[i,j]*rivHR[(i+j-1),stock:stock]))#+sum(NladderRsp[i,j,stock]*(HrW[i,j]*rivHR[(i+j-1),stock]))  #avail_r 1:13, 16 
+528   |  #NdcW_all[i,j]<-sum(NdcW[i,j,avail_dc])                  #1:13 ,16
+529   |  NdcW_all[i,j]<-sum(NdcW[i,j,stock:stock])
+530   |  NrR_all[i,j]<- sum(NrR[i,j,])
+531   |  #NdcR_all[i,j]<- sum(NdcR[i,j,1:(AUS-1)])+sum(NdcRsp[i,j,1:2]) #not AU4     
+532   |  NdcR_all[i,j]<- sum(NdcR[i,j,1:1])+sum(NdcRsp[i,j,stock:stock]) #not AU4     
+533   |  NcR_all[i,j,1]<- NcR[i,j,1]#+sum(NcRsp[i,j,1:2])
+534   |  #NcR_all[i,j,2]<- NcR[i,j,2]  
+535   |  #NcR_all[i,j,3]<- NcR[i,j,3]  
+536   |  # Estimated catches of wild and hatchery-reared salmon in the river
+537   |  ncr[i,j]<- NrW_all[i,j]+HrR[i,j]*NrR_all[i,j]
+538   |  # Estimated catches of salmon in the coastal areas
+539   |  #for(s in 1:stocks){
+540   |  for(s in stock:stock){
+541   |  nccs[i,j,s]<-HcW[i,j,AU[s]]*NcW[i,j,s] 
+542   |  }
+543   |  #ncc[i,j] <- sum(nccs[i,j,1:stocks]) + inprod(HcR[i,j,1:(AUS-1)],NcR_all[i,j,1:(AUS-1)])+ HdcW[i,j]*NdcW_all[i,j]+HdcR[i,j]*NdcR_all[i,j]  #not AU4   
+544   |  ncc[i,j] <- sum(nccs[i,j,stock:stock]) + inprod(HcR[i,j,stock:stock],NcR_all[i,j,stock:stock])+ HdcW[i,j]*NdcW_all[i,j]+HdcR[i,j]*NdcR_all[i,j]  #not AU4   
+545   |  }#j       
+546   |  }  #i
+547   |  for(i in 1:5){             #move above later
+548   |  ncr_Tot[i]<-0
+549   |  ncc_Tot[i]<-0
+550   |  nco_Tot[i]<-0
+551   |  nct_Tot[i]<-0
+552   |  nct_ObsTotX[i]<-0 
+553   |  nco_ObsTotX[i]<-0
+554   |  ncc_ObsTotX[i]<-0
+555   |  ncr_ObsTotX[i]<-0
+556   |  }
+557   |  for (i in 6:(m-1)){ 
+558   |  nct_Tot[i] <- nc_otr[(i-1),2]+nc_otr[(i-2),3]+nc_otr[(i-3),4]+nc_otr[(i-4),5]   #Estimated total trolling catches
+559   |  muCT[i] <-log(nct_Tot[i] /ureport_o[i]) - 0.5/tauCT
+560   |  nct_ObsTot[i]~dlnorm(muCT[i], tauCT)
+561   |  nct_ObsTotX[i]~dlnorm(muCT[i], tauCT)  
+562   |  nco_Tot[i] <- nco[(i-1),2]+nco[(i-2),3]+nco[(i-3),4]+nco[(i-4),5]                 #Estimated total offshore catches Nl and Ndo
+563   |  muCO[i] <-log(nco_Tot[i] /ureport_o[i]) - 0.5/tauCO
+564   |  nco_ObsTot[i] ~dlnorm(muCO[i], tauCO)
+565   |  nco_ObsTotX[i] ~dlnorm(muCO[i], tauCO)
+566   |  nc_oll_Tot[i] <- nc_oll[(i-1),2]+nc_oll[(i-2),3]+nc_oll[(i-3),4]+nc_oll[(i-4),5]         #Estimated total offshore longline catches Nl only 
+567   |  nc_odn_Tot[i] <- nc_odn[(i-1),2]+nc_odn[(i-2),3]+nc_odn[(i-3),4]+nc_odn[(i-4),5]         #Estimated total offshore driftnet catches Ndo only
+568   |  ncr_Tot[i] <- ncr[(i-1),2]+ncr[(i-2),3]+ncr[(i-3),4]+ncr[(i-4),5]+ ncr[(i-5),6]     # Estimated total river catches   Nr
+569   |  muCR[i] <- log(ncr_Tot[i] /ureport_r[i]) - 0.5/tauCR
+570   |  ncr_ObsTot[i] ~dlnorm(muCR[i], tauCR)
+571   |  ncr_ObsTotX[i] ~dlnorm(muCR[i], tauCR)
+572   |  ncc_Tot[i] <- ncc[(i-1),2]+ncc[(i-2),3]+ncc[(i-3),4]+ncc[(i-4),5]+ ncc[(i-5),6]     # Estimated total coastal catches Nc Ndc
+573   |  muCC[i] <- log(ncc_Tot[i] /ureport_c[i]) - 0.5/tauCC
+574   |  ncc_ObsTot[i] ~dlnorm(muCC[i], tauCC)
+575   |  ncc_ObsTotX[i] ~dlnorm(muCC[i], tauCC)
+576   |  ######### Spawner counting observation models (Didson and fishladders) #########
+577   |  sp_count[i,1]~dbin(p.detect[i,1],NrWtot[i,1]) # Torne Didson count 
+578   |  sp_countX[i,1]~dbin(p.detect[i,1],NrWtot[i,1]) 
+579   |  ladder_count[i,1]~dbin(p.ladder[i,1],NrWtot[i,1])   #Ume only (propn that finds the ladder)
+580   |  eta_star[i,1]<-N_sp_count[i,1]*(eta_msw[1]+1)/(eta_msw[1]+N_sp_count[i,1])-1    #N_sp_count=sp_count (observation)
+581   |  alpha_msw[i,1]<-probMSW[i,1]*eta_star[i,1]
+582   |  beta_msw[i,1]<-(1-probMSW[i,1])*eta_star[i,1]
+583   |  MSWprop[i,1]~dbeta(alpha_msw[i,1],beta_msw[i,1])
+584   |  #sp_count[i,2]~dlnorm(muDS[i], tauDS) # Simojoki Didson count
+585   |  #sp_countX[i,2]~dlnorm(muDS[i], tauDS) 
+586   |  #muDS[i]<-log(NrWtot[i,2]/coefDS)-0.5*(1/tauDS)
+587   |  #     for(s in 3:stocks){
+588   |  #     
+589   |  #         sp_count[i,s]~dbin(p.detect[i,s],NrWtot[i,s]) # Didson count Torne, Simo, ladder count Kalix
+590   |  #         sp_countX[i,s]~dbin(p.detect[i,s],NrWtot[i,s]) 
+591   |  #         
+592   |  #         ladder_count[i,s]~dbin(p.ladder[i,s],NrWtot[i,s])   #Ume only (propn that finds the ladder)
+593   |  #         
+594   |  #         eta_star[i,s]<-N_sp_count[i,s]*(eta_msw[s]+1)/(eta_msw[s]+N_sp_count[i,s])-1    #N_sp_count=sp_count (observation)
+595   |  # alpha_msw[i,s]<-probMSW[i,s]*eta_star[i,s]
+596   |  #         beta_msw[i,s]<-(1-probMSW[i,s])*eta_star[i,s]
+597   |  #         MSWprop[i,s]~dbeta(alpha_msw[i,s],beta_msw[i,s])
+598   |  #       
+599   |  #     }
+600   |  WGrilse[i,1]~dbin(PropWgrilse[i,1], Grilse_all[i,1]) #proportion of wild grilse, Torne only
+601   |  WMSW[i,1]~dbin(PropWMSW[i,1], MSW_all[i,1])
+602   |  Wprop[i,1]<-nco_W[i,2]/(nco_W[i,2]+nco_R[i,2])  
+603   |  Wprop[i,2]<-nco_W[i,3]/(nco_W[i,3]+nco_R[i,3])
+604   |  for (j in 1:2){     #1SW (j=2 elsewhere) and 2SW (j=3 elsewhere) salmon
+605   |  eta_wr[i,j]<-(Wprop[i,j]*(1-Wprop[i,j]))/(sd_wr[i,j]*sd_wr[i,j])#-1  
+606   |  log_WpropObs[i,j]~dnorm(log(Wprop[i,j])-0.5*log(1/(Wprop[i,j]*eta_wr[i,j])+1),
+607   |  1/log(1/(Wprop[i,j]*eta_wr[i,j])+1))
+608   |  log_RpropObs[i,j]~dnorm(log(1-Wprop[i,j])-0.5*log(1/((1-Wprop[i,j])*eta_wr[i,j])+1),
+609   |  1/log(1/((1-Wprop[i,j])*eta_wr[i,j])+1))
+610   |  } 
+611   |  #     for(rs in 1:rstocks){  #1=Lule?lven, 2=Dal?lven
+612   |  #    
+613   |  #       #  NrRtot[i,rs]<-round((NrR[(i-1),2,AUR[rs]]*RProp[(i-1),rs]+NrR[(i-2),3,AUR[rs]]*RProp[(i-2),rs]+
+614   |  # #NrR[(i-3),4,AUR[rs]]*RProp[(i-3),rs]+NrR[(i-4),5,AUR[rs]]*RProp[(i-4),rs]+
+615   |  # #NrR[(i-5),6,AUR[rs]]*RProp[(i-5),rs])*1000-CatchR[i,rs])
+616   |  #    
+617   |  #            NrRtot.vul[i,rs]<-(NrR[(i-1),2,AUR[rs]]*RProp[(i-1),rs]+NrR[(i-2),3,AUR[rs]]*RProp[(i-2),rs]+
+618   |  # NrR[(i-3),4,AUR[rs]]*RProp[(i-3),rs]+NrR[(i-4),5,AUR[rs]]*RProp[(i-4),rs]+
+619   |  # NrR[(i-5),6,AUR[rs]]*RProp[(i-5),rs])*1000
+620   |  #         
+621   |  #         HRNrR[i,rs]<-min(CatchR[i,rs]/NrRtot.vul[i,rs],0.9999)
+622   |  #         NrRtot[i,rs]<-round(NrRtot.vul[i,rs]*(1-HRNrR[i,rs]))
+623   |  #         
+624   |  #         TrapTot[i,rs]~dbin(pTrap[i,rs],NrRtot[i,rs])
+625   |  #         pTrap[i,rs]~dbeta(aTrap[rs],bTrap[rs])
+626   |  #     }
+627   |  }
+628   |  # for(i in 1:5){
+629   |  #   NLuleRec[i]~dbin(pTrap[yLule[i],1],NLuleRel[i])
+630   |  # }
+631   |  ###################MORTALITY AND SURVIVAL RATES#####################
+632   |  ## Instantaneous adult natural mortality rate
+633   |  MW ~dlnorm(-2.3, 4.3)T(0.025,0.35)
+634   |  MR ~dlnorm(-2.3, 4.3)T(0.025,0.35)
+635   |  early_MpsW~dlnorm(0.23,19)T(0.5,5)
+636   |  for(i in 1:4){
+637   |  mu_MpsW[i] <- log(early_MpsW)
+638   |  }
+639   |  for(i in 5:(m+proj_years)){
+640   |  mu_MpsW[i] <- log(mean(MpsW[(i-4):(i-1)])) - 0.5 / tau_MpsW
+641   |  }
+642   |  Reff_mu~dbeta(0.9,1.8)
+643   |  Reff_eta~dunif(0.001,0.5) 
+644   |  Ra<-Reff_mu/Reff_eta
+645   |  Rb<-(1-Reff_mu)/Reff_eta   
+646   |  tau_MpsW <- 1/log(((CV_MpsW)* (CV_MpsW)) + 1)
+647   |  CV_MpsW~dunif(0.001,1) 
+648   |  for(i in 1:(m+proj_years)){
+649   |  MpsW[i]~dlnorm(mu_MpsW[i],tau_MpsW)     ## Post-smolt M for wild salmon < post-smolt M for reared salmon
+650   |  survMpsW[i]<-exp(-MpsW[i])
+651   |  RMps[i]~dbeta(Ra,Rb)T(0.01,0.99)
+652   |  ReffectMps[i] <- (RMps[i] * 1.5)+1                 # hatchery-reared effect between 1 and 2.5
+653   |  MpsR[i] <- MpsW[i] * ReffectMps[i]
+654   |  survMpsR[i]<-exp(-MpsR[i])
+655   |  surv[i,1,1,1]<-exp(-MpsW[i]/Tstep)           #survmortW
+656   |  surv[i,1,1,2]<-exp(-MpsR[i]/Tstep)             #survmortR
+657   |  # surv[i,1,2,1] <- exp(-qlW[1]*El[i,1]) * exp(-3*MpsW[i]/Tstep)        #survlW  
+658   |  #surv[i,1,2,2] <- exp(-qlR[1]*El[i,1]) * exp(-3*MpsR[i]/Tstep)          #survlR
+659   |  surv[i,1,2,1] <- exp(-qlW[i,1]*El[i,1]) * exp(-2*MpsW[i]/Tstep)        #survlW  
+660   |  surv[i,1,2,2] <- exp(-qlR[i,1]*El[i,1]) * exp(-2*MpsR[i]/Tstep)          #survlR
+661   |  surv[i,1,3,1] <- 0.99      #survnohW (not used anywhere, 1 causes error message in process errors)
+662   |  surv[i,1,3,2] <- 0.99
+663   |  surv[i,1,4,1] <- exp(-qdW[i,1]*Edo[i,1]) * exp(-MpsW[i]/Tstep)         #survdoW
+664   |  surv[i,1,4,2] <- exp(-qdR[i,1]*Edo[i,1]) * exp(-MpsR[i]/Tstep)  
+665   |  surv[i,1,5,1]<-(1-HrW[i,1])*exp(-MpsW[i]*sealMort[i,1,1]/Tstep)    #survrW apply AU 1 seal M 
+666   |  surv[i,1,5,2]<-(1-HrR[i,1])*exp(-MpsR[i]*sealMort[i,1,1]/Tstep)    #survrR
+667   |  for(s in 1:stocks){
+668   |  surv.riv[i,1,s] <- (1-HrW[i,1]*rivHR[(i+1-1),s])*exp(-MpsW[i]*sealMort[i,1,1]/Tstep) 
+669   |  }                
+670   |  surv[i,1,6,1]<-(1-HtW[i,1]) * exp(-MpsW[i]/Tstep)          
+671   |  surv[i,1,6,2]<-(1-HtR[i,1]) * exp(-MpsR[i]/Tstep)
+672   |  for (au in 1:3){
+673   |  #for (au in stock:stock){
+674   |  F_sea[i,1,1,au]<-qctnW[1,au]*Ectn[i,1,au]+qcgnW[1,au]*Ecgn[i,1,au]
+675   |  survc[i,1,1,au] <- exp(-F_sea[i,1,1,au])* exp(-(6*MpsW[i]/Tstep))   
+676   |  F_sea[i,1,2,au]<-qctnR[1,au]*Ectn[i,1,au]+qcgnR[1,au]*Ecgn[i,1,au]
+677   |  survc[i,1,2,au] <-exp(-F_sea[i,1,2,au]) * exp(-(6*MpsR[i]/Tstep))   
+678   |  survdc[i,1,1,au] <- 0.99    #not used anywhere
+679   |  survdc[i,1,2,au] <- 0.99
+680   |  }
+681   |  F_sea[i,1,1,4]<-0
+682   |  F_sea[i,1,2,4]<-0
+683   |  survc[i,1,1,4] <-exp(-(6*MpsW[i]/Tstep))      #wild    
+684   |  survc[i,1,2,4] <-exp(-(6*MpsR[i]/Tstep))      #reared 
+685   |  survdc[i,1,1,4] <- 0.99   
+686   |  survdc[i,1,2,4] <- 0.99
+687   |  for(j in 2:6){
+688   |  surv[i,j,1,1]<-0.99           #survmortW  not used anywhere
+689   |  surv[i,j,1,2]<-0.99             #survmortR
+690   |  #surv[i,j,2,1] <- exp(-qlW[j]*El[i,j]) * exp(-3*MW/Tstep)                        #survlW  
+691   |  #surv[i,j,2,2] <- exp(-qlR[j]*El[i,j]) * exp(-3*MR/Tstep) 
+692   |  surv[i,j,2,1] <- exp(-qlW[i,j]*El[i,j]) * exp(-2*MW/Tstep)                        #survlW  
+693   |  surv[i,j,2,2] <- exp(-qlR[i,j]*El[i,j]) * exp(-2*MR/Tstep)
+694   |  surv[i,j,3,1] <- exp(-8*MW/Tstep)#QUERY 2 time steps in process error calc!      #survnohW
+695   |  surv[i,j,3,2] <- exp(-8*MR/Tstep)
+696   |  surv[i,j,4,1] <- exp(-qdW[i,j]*Edo[i,j]) * exp(-MW/Tstep)       #survdoW
+697   |  surv[i,j,4,2] <- exp(-qdR[i,j]*Edo[i,j]) * exp(-MR/Tstep) 
+698   |  surv[i,j,5,1] <- (1-HrW[i,j])*exp(-2*MW/Tstep)     #survrW                  
+699   |  surv[i,j,5,2] <- (1-HrR[i,j])*exp(-2*MR/Tstep)  
+700   |  for(s in 1:stocks){
+701   |  surv.riv[i,j,s] <- (1-HrW[i,j]*rivHR[(i+j-1),s])*exp(-2*MW/Tstep)     #survrW
+702   |  }                
+703   |  surv[i,j,6,1]<-(1-HtW[i,j]) * exp(-MW/Tstep)          
+704   |  surv[i,j,6,2]<-(1-HtR[i,j]) * exp(-MR/Tstep)   
+705   |  #for(au in 1:3){
+706   |  for(au in stock:stock){
+707   |  # Survival from natural and fishing mortality during June and July
+708   |  F_sea[i,j,1,au]<-qctnW[j,au]*Ectn[i,j,au]+qcgnW[j,au]*Ecgn[i,j,au]
+709   |  survc[i,j,1,au] <-exp(-F_sea[i,j,1,au]) * exp(-(2*MW*sealMort[i,j,au]/Tstep)) 
+710   |  # Survival from natural and fishing mortality during June and July
+711   |  F_sea[i,j,2,au]<-qctnR[j,au]*Ectn[i,j,au]+qcgnR[j,au]*Ecgn[i,j,au]
+712   |  survc[i,j,2,au] <-exp(-F_sea[i,j,2,au])  * exp(-(2*MR*sealMort[i,j,au]/Tstep)) 
+713   |  survdc[i,j,1,au] <- exp(-qdW[i,j-1]*Edc[i,j]) * exp(-MW/Tstep)      
+714   |  survdc[i,j,2,au] <- exp(-qdR[i,j-1]*Edc[i,j]) * exp(-MR/Tstep)
+715   |  }
+716   |  F_sea[i,j,1,4]<-0
+717   |  F_sea[i,j,2,4]<-0
+718   |  survc[i,j,1,4] <- exp(-(2*MW*sealMort[i,j,4]/Tstep))   #wild   #seal M AU4 = 1   
+719   |  survc[i,j,2,4] <- exp(-(2*MR*sealMort[i,j,4]/Tstep))   #reared 
+720   |  survdc[i,j,1,4] <- exp(-MW/Tstep)    
+721   |  survdc[i,j,2,4] <- exp(-MR/Tstep)        
+722   |  }
+723   |  }
+724   |  ##################################### Process errors ###########################
+725   |  for(i in 1:(m+proj_years)){
+726   |  for(j in 1:6){           
+727   |  for(ii in 1:4){
+728   |  #1 survmort        
+729   |  #2 survl          
+730   |  #3 survnoh       
+731   |  #4 survdo 
+732   |  zz[i,j,ii]~ dgamma(2, 50)I( , maxvar)
+733   |  #   might need a change only for wild
+734   |  for(ij in 1:2){  #reared or wild
+735   |  kk[i,j,ii,ij] <- step(surv[i,j,ii,ij] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
+736   |  maxE[i,j,ii,ij] <- ((1 / surv[i,j,ii,ij]) * kk[i,j,ii,ij]) + (2 * (1 - kk[i,j,ii,ij]))
+737   |  minE[i,j,ii,ij] <- (1 - (maxE[i,j,ii,ij] - 1))  
+738   |  vvE[i,j,ii,ij] <- pow((maxE[i,j,ii,ij] - minE[i,j,ii,ij]), 2) / 12   # variance depending on survival 
+739   |  }
+740   |  minv[i,j,ii]<-min(vvE[i,j,ii,1],vvE[i,j,ii,2])      #compare W with R
+741   |  vE[i,j,ii]<-mon_E[j,ii]*zz[i,j,ii]/12
+742   |  maxError[i,j,ii] <- 1 + pow((3 * min(vE[i,j,ii], minv[i,j,ii])), 0.5)   #variance depending on time step
+743   |  minError[i,j,ii] <- 1 - pow((3 * min(vE[i,j,ii], minv[i,j,ii])), 0.5) 
+744   |  kE[i,j,ii] ~ dunif(minError[i,j,ii], maxError[i,j,ii])
+745   |  }
+746   |  #5 survr  
+747   |  zzr[i,j]~ dgamma(2, 50)I( , maxvar)         
+748   |  #for(s in 1:stocks){  
+749   |  for(s in stock:stock){  
+750   |  kkrw[i,j,s] <- step(surv.riv[i,j,s]*surv_migr[(i+j-1),s] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
+751   |  maxErw[i,j,s] <- ((1 / (surv.riv[i,j,s]*surv_migr[(i+j-1),s])) * kkrw[i,j,s]) + (2 * (1 - kkrw[i,j,s]))
+752   |  minErw[i,j,s] <- (1 - (maxErw[i,j,s] - 1))
+753   |  vvErw[i,j,s] <- pow((maxErw[i,j,s] - minErw[i,j,s]), 2) / 12   # variance depending on survival 
+754   |  }
+755   |  kkrr[i,j] <- step(surv[i,j,5,2] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
+756   |  maxErr[i,j] <- ((1 / surv[i,j,5,2]) * kkrr[i,j]) + (2 * (1 - kkrr[i,j]))
+757   |  minErr[i,j] <- (1 - (maxErr[i,j] - 1))
+758   |  vvErr[i,j] <- pow((maxErr[i,j] - minErr[i,j]), 2) / 12   # variance depending on survival 
+759   |  minvr[i,j]<-min(vvErw[i,j,stock:stock],vvErr[i,j])      #compare W with R
+760   |  vEr[i,j]<-mon_E[j,5]*zzr[i,j]/12
+761   |  maxErrorr[i,j] <- 1 + pow((3 * min(vEr[i,j], minvr[i,j])), 0.5)   #variance depending on time step
+762   |  minErrorr[i,j] <- 1 - pow((3 * min(vEr[i,j], minvr[i,j])), 0.5) 
+763   |  kE[i,j,5] ~ dunif(minErrorr[i,j], maxErrorr[i,j])
+764   |  # 6 survt
+765   |  for(ii in 6:6){
+766   |  zz[i,j,ii]~ dgamma(2, 50)I( , maxvar)
+767   |  #   might need a change only for wild
+768   |  for(ij in 1:2){  #reared or wild
+769   |  kk[i,j,ii,ij] <- step(surv[i,j,ii,ij] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
+770   |  maxE[i,j,ii,ij] <- ((1 / surv[i,j,ii,ij]) * kk[i,j,ii,ij]) + (2 * (1 - kk[i,j,ii,ij]))
+771   |  minE[i,j,ii,ij] <- (1 - (maxE[i,j,ii,ij] - 1))  
+772   |  vvE[i,j,ii,ij] <- pow((maxE[i,j,ii,ij] - minE[i,j,ii,ij]), 2) / 12   # variance depending on survival 
+773   |  }
+774   |  minv[i,j,ii]<-min(vvE[i,j,ii,1],vvE[i,j,ii,2])      #compare W with R
+775   |  vE[i,j,ii]<-mon_E[j,ii]*zz[i,j,ii]/12
+776   |  maxError[i,j,ii] <- 1 + pow((3 * min(vE[i,j,ii], minv[i,j,ii])), 0.5)   #variance depending on time step
+777   |  minError[i,j,ii] <- 1 - pow((3 * min(vE[i,j,ii], minv[i,j,ii])), 0.5) 
+778   |  kE[i,j,ii] ~ dunif(minError[i,j,ii], maxError[i,j,ii])
+779   |  } 
+780   |  #########################################################################
+781   |  #survc      
+782   |  #survdc (was surv6)      
+783   |  zzc[i,j]~ dgamma(2, 50)I( , maxvar)         #survc
+784   |  zzdc[i,j]~ dgamma(2, 50)I( , maxvar)         #survdc
+785   |  for(ij in 1:2){  #reared or wild
+786   |  #    AU specific, maybe only one AU
+787   |  #for(au in 1:AUS){   
+788   |  for(au in 1:1){  
+789   |  kkc[i,j,ij,au] <- step(survc[i,j,ij,au] - 0.5) # if surv >=0.5 then kk=1 else kk=0 
+790   |  kkdc[i,j,ij,au] <- step(survdc[i,j,ij,au] - 0.5)
+791   |  maxEc[i,j,ij,au] <- ((1 / survc[i,j,ij,au]) * kkc[i,j,ij,au]) + (2 * (1 - kkc[i,j,ij,au]))
+792   |  maxEdc[i,j,ij,au] <- ((1 / survdc[i,j,ij,au]) * kkdc[i,j,ij,au]) + (2 * (1 - kkdc[i,j,ij,au]))
+793   |  minEc[i,j,ij,au] <- (1 - (maxEc[i,j,ij,au] - 1))
+794   |  minEdc[i,j,ij,au] <- (1 - (maxEdc[i,j,ij,au] - 1))  
+795   |  vvEc[i,j,ij,au] <- pow((maxEc[i,j,ij,au] - minEc[i,j,ij,au]), 2) / 12   # variance depending on survival 
+796   |  vvEdc[i,j,ij,au] <- pow((maxEdc[i,j,ij,au] - minEdc[i,j,ij,au]), 2) / 12   # variance depending on survival 
+797   |  }
+798   |  }
+799   |  #   these sums need to be modified                                                                 
+800   |  # minvc[i,j]<-min(vvEc[i,j,1:2,1:AUS])      #compare W with R
+801   |  # minvdc[i,j]<-min(vvEdc[i,j,1:2,1:AUS])      #compare W with R
+802   |  minvc[i,j]<-min(vvEc[i,j,1:2,])      #compare W with R
+803   |  minvdc[i,j]<-min(vvEdc[i,j,1:2,])      #compare W with R
+804   |  vEc[i,j]<-mon_Ec[j]*zzc[i,j]/12               #variance depending on time step
+805   |  vEdc[i,j]<-mon_Edc[j]*zzdc[i,j]/12            #variance depending on time step
+806   |  maxErrorc[i,j] <- 1 + pow((3 * min(vEc[i,j], minvc[i,j])), 0.5)   
+807   |  maxErrordc[i,j] <- 1 + pow((3 * min(vEdc[i,j], minvdc[i,j])), 0.5)    
+808   |  minErrorc[i,j] <- 1 - pow((3 * min(vEc[i,j], minvc[i,j])), 0.5)
+809   |  minErrordc[i,j] <- 1 - pow((3 * min(vEdc[i,j], minvdc[i,j])), 0.5)  
+810   |  kEc[i,j] ~ dunif(minErrorc[i,j], maxErrorc[i,j])
+811   |  kEdc[i,j] ~ dunif(minErrordc[i,j], maxErrordc[i,j])
+812   |  }
+813   |  }
+814   |  maxvar <- 0.5 / (12)  # max variance if sur=0.5
+815   |  ###################################### Catchabilities & harvest rates ####################################
+816   |  # Mean reverting AR(1)-model for 1SW (==MSW) harvest rate in offshore trolling fishery
+817   |  # =======================================================================
+818   |  # Note that autocorrelation takes place between years but in HtW[i,j] index i is smolt cohort 
+819   |  # Recreational offshore trolling 
+820   |  for(i in 1:(m+4)){ # i: smolt cohort
+821   |  # Post-smolts are assumed released without mortality
+822   |  HtW[i,1]<-0 
+823   |  HtR[i,1]<-0
+824   |  # i+1=i+2-1: cohort i age 2 transformed to year i+1
+825   |  logit(HtW[i,2])<-logitHtW2[i+1] 
+826   |  logit(HtR[i,2])<-logitHtW2[i+1]#<-logitHtR2[i+1] 
+827   |  }
+828   |  for(i in 1:m){ # i: smolt cohort 
+829   |  for(j in 3:6){ 
+830   |  # Harvest rate of MSW salmon of different age must be the same within years:
+831   |  #
+832   |  # The cohort i salmon are of age 3 in year y=i+3-1=i+2 and 
+833   |  # in the same year, the age 2 salmon originate from cohort y-1=i+2-1= i+1 (=i+3-2)
+834   |  #
+835   |  # The cohort i salmon are of age 4 in year y=i+4-1=i+3 and
+836   |  # in the same year the age 2 salmon originate from cohort y-1=i+3-1=i+2 (=i+4-2)
+837   |  # and so on...
+838   |  HtW[i,j]<-HtW[i+j-2,2] 
+839   |  HtR[i,j]<-HtW[i,j]#HtR[i+j-2,2]
+840   |  }
+841   |  }
+842   |  for(i in 1:(m+4)){ # i: calendar year
+843   |  logitHtW2[i+1]~dnorm(mu_trW[i+1],tau_tr)
+844   |  mu_trW[i+1]<-phi_tr*logitHtW2[i]+(1-phi_tr)*mean_trW # mean reverting AR(1)
+845   |  #logitHtR2[i+1]~dnorm(mu_trR[i+1],tau_tr)
+846   |  # mu_trR[i+1]<-phi_tr*logitHtR2[i]+(1-phi_tr)*mean_trR
+847   |  }
+848   |  tau_tr<-1/((1-pow(phi_tr,2))*(sd_tr*sd_tr))  
+849   |  # Marginal variance chosen to give uniform when mean=0, otherwise unimodal
+850   |  sd_tr~dunif(0.01,1.6)
+851   |  phi_tr~dunif(0,1) #positive autocorrelation
+852   |  mean_trW~dnorm(0,0.39) # implies uniform[0,1] prior for mean harvest rate
+853   |  #mean_trR~dnorm(0,0.39) 
+854   |  logitHtW2[1]~dnorm(0,0.39) 
+855   |  #logitHtR2[1]~dnorm(0,0.39)
+856   |  for(i in 1:m){  
+857   |  # Harvest rate of smolts in the river/river mouth
+858   |  HrW[i,1] <- 1-exp(-(qrW[1]*Er[i,1]))
+859   |  HrR[i,1] <- 1-exp(-(qrR[1]*Er[i,1])) 
+860   |  for (j in 2:3){ 
+861   |  HrR[i,j]<-1-exp(-(qrR[j]*Er[i,j]))    # Harvest rate river fishery reared salmon
+862   |  }
+863   |  for (j in 4:6){ 
+864   |  HrW[i,j] <- HrW[i+j-3,3] #!!!! equal by year not by smolt cohort
+865   |  HrR[i,j]<-1-exp(-(qrR[j]*Er[i,j])) 
+866   |  }
+867   |  }
+868   |  for(i in 1:(m+3)){ # HrW age 3 must go +3 further to match dimensions above  
+869   |  for (j in 2:3){ 
+870   |  HrW[i,j]~dbeta(1.6,6.4)# Harvest rate river fishery in rivers with natural reproduction
+871   |  }}
+872   |  for(i in (m+1):(m+proj_years)){
+873   |  for(j in 1:6){
+874   |  HrW[i,j]<-0 
+875   |  HrR[i,j]<-0
+876   |  }
+877   |  }
+878   |  #post-smolts, j=1
+879   |  # Harvest rates in 1987
+880   |  # ==================
+881   |  HRR[1]  ~dbeta (1,20)# Harvest rate smolts in river fishery
+882   |  qrW[1] ~ dlnorm(mqr[1], tauqr)# Catchability of wild smolts in the river
+883   |  qrR[1] ~ dlnorm(mqr[1], tauqr)# Catchability of reared smolts in the river
+884   |  mqr[1] <- log(-log(1-HRR[1])/Er[1,1])# Mean catchability river fishery
+885   |  HRL[1] ~ dbeta(1,20)   # Harvest rate of smolts longline fishery
+886   |  HRD[1] ~ dbeta(1,20)   # Harvest rate of smolts in driftnet fishery
+887   |  HRCTN[1,1]  ~dbeta (1,20)# Harvest rate smolts in coastal trapnet fishery
+888   |  HRCGN[1,1] ~dbeta (1,20)# Harvest rate smolts in coastal gillnet fishery
+889   |  qlW1~ dlnorm(mql[1], tauqd)# Catchability of reproductive salmon in the longline fishery
+890   |  qlR1~ dlnorm(mql[1], tauqd)# Catchability of non-reproductive salmon in the longline 
+891   |  for(i in 1:m){
+892   |  qlW[i,1]<-qlW1
+893   |  qlR[i,1]<-qlR1
+894   |  }
+895   |  mql[1] <- log(-log(1-HRL[1])/El[1,1])# Mean catchability coefficient longline fishery
+896   |  qdW1 ~ dlnorm(mqd[1], tauqd)# Catchability of reproductive salmon in the driftnet 
+897   |  qdR1 ~ dlnorm(mqd[1], tauqd)# Catchability of non-reproductive salmon in the driftnet 
+898   |  for(i in 1:m){
+899   |  qdW[i,1]<-qdW1
+900   |  qdR[i,1]<-qdR1
+901   |  }
+902   |  # qdW[1] ~ dlnorm(mqd[1], tauqd)# Catchability of reproductive salmon in the driftnet 
+903   |  # qdR[1] ~ dlnorm(mqd[1], tauqd)# Catchability of non-reproductive salmon in the driftnet 
+904   |  mqd[1] <- log(-log(1-HRD[1])/Edo[1,1])# Mean catchability coefficient driftnet fishery
+905   |  # Catchability coefficient of salmon by coastal fisheries
+906   |  qctnW[1,1] ~ dlnorm(mqctn[1,1], tauqctn)# Catchability wild salmon coastal trapnet
+907   |  qctnR[1,1] ~ dlnorm(mqctn[1,1], tauqctn)# Catchability reared salmon coastal trapnet
+908   |  mqctn[1,1] <- log(-log(1-HRCTN[1,1])/Ectn[1,1,1])# Mean catchability coastal trapnet fishery
+909   |  qcgnW[1,1] ~ dlnorm(mqcgn[1,1], tauqcgn)# Catchability wild salmon coastal gillnet
+910   |  qcgnR[1,1] ~ dlnorm(mqcgn[1,1], tauqcgn)# Catchability reared salmon coastal gillnet 
+911   |  mqcgn[1,1] <- log(-log(1-HRCGN[1,1])/Ecgn[1,1,1])# Mean catchability coastal gillnet fishery
+912   |  # harvestrates for AU 2 and 3   
+913   |  #   for (au in 2:3){
+914   |  # 
+915   |  #     HRCTN[1,au]  ~dbeta (1,20)# Harvest rate smolts in coastal trapnet fishery
+916   |  #    HRCGN[1,au] ~dbeta (1,20)# Harvest rate smolts in coastal gillnet fishery
+917   |  # 
+918   |  #     qctnR[1,au] <- qctnR[1,1]
+919   |  # mqctn[1,au] <- mqctn[1,1]
+920   |  # qctnW[1,au] <- (qctnW[1,1] / qctnR[1,1] ) * qctnR[1,au]
+921   |  # 
+922   |  # qcgnR[1,au] <- qcgnR[1,1]
+923   |  # mqcgn[1,au] <- mqcgn[1,1]
+924   |  # qcgnW[1,au] <- (qcgnW[1,1] / qcgnR[1,1] ) * qcgnR[1,au]
+925   |  #   }
+926   |  # Grilse (j=2) and 2SW salmon(j=3)
+927   |  #qlW[2] ~ dlnorm(mql[2], tauql)# Catchability of reproductive salmon in the longline fishery
+928   |  #qlR[2] ~ dlnorm(mql[2], tauql)# Catchability of non-reproductive salmon in the longline 
+929   |  #mql[2] <- log(-log(1-HRL[2])/El[1,1])# Mean catchability coefficient longline fishery
+930   |  # Autocorrelation model for 2SW (==MSW) catchability in longline fishery
+931   |  # =======================================================================
+932   |  # Note that autocorrelation takes place between years but in qlW[i,j] index i is smolt cohort 
+933   |  for(i in 1:(m+proj_years+3)){
+934   |  # i+1=i+2-1: cohort i age 2 transformed to year i+1
+935   |  logit(qlW[i,2])<-logit_qlW[i+1]
+936   |  logit(qlR[i,2])<-logit_qlW[i+1]#logit_qlR[i+1]
+937   |  # mean reverting AR(1) (index i is year)
+938   |  logit_qlW[i+1]~dnorm(mu_qlW[i+1], tau_ql)
+939   |  mu_qlW[i+1]<-phi_ql*logit_qlW[i]+(1-phi_ql)*mean_qlW # mean reverting AR(1)
+940   |  #logit_qlR[i+1]~dnorm(mu_qlR[i+1], tau_ql)
+941   |  #mu_qlR[i+1]<-phi_ql*logit_qlR[i]+(1-phi_ql)*mean_qlR # mean reverting AR(1)
+942   |  }
+943   |  logit_qlW[1]~dnorm(0,0.39) # implies uniform[0,1] prior for initial catchability
+944   |  #logit_qlR[1]~dnorm(0,0.39) # implies uniform[0,1] prior for initial catchability
+945   |  for(i in 1:(m+proj_years)){
+946   |  for(j in 3:5){
+947   |  # Same catchability of MSW salmon in the longline fishery
+948   |  qlW[i,j] <- qlW[i+j-2,2]
+949   |  qlR[i,j] <-qlW[i,j]# qlR[i+j-2,2]
+950   |  }
+951   |  }
+952   |  mean_qlW~dnorm(0,0.39) # implies uniform[0,1] prior for mean catchability
+953   |  #mean_qlR~dnorm(0,0.39) # implies uniform[0,1] prior for mean catchability
+954   |  tau_ql<-1/((1-pow(phi_ql,2))*(sd_ql*sd_ql))  
+955   |  # Marginal variance chosen to give uniform when mean=0, otherwise unimodal
+956   |  sd_ql~dunif(0.01,1.6)
+957   |  phi_ql~dunif(0,1) #positive autocorrelation
+958   |  # Mean reverting AR(1)-model for catchability in driftnet fisheries (both offshore and coastal)
+959   |  # =======================================================================
+960   |  for(j in 2:3){
+961   |  for(i in 1:(m+proj_years+3)){
+962   |  # i+j-1: cohort i age j transformed to year
+963   |  logit(qdW[i,j])<-logit_qdW[i+j-1,j]
+964   |  logit(qdR[i,j])<-logit_qdW[i+j-1,j]#logit_qdR[i+j-1,j]
+965   |  }
+966   |  for(i in 1:(m+proj_years+4)){
+967   |  # mean reverting AR(1) (index i is year)
+968   |  logit_qdW[i+1,j]~dnorm(mu_qdW[i+1,j], tau_qd)
+969   |  mu_qdW[i+1,j]<-phi_qd*logit_qdW[i,j]+(1-phi_qd)*mean_qdW[j]
+970   |  #logit_qdR[i+1,j]~dnorm(mu_qdR[i+1,j], tau_qd)
+971   |  #mu_qdR[i+1,j]<-phi_qd*logit_qdR[i,j]+(1-phi_qd)*mean_qdR[j]
+972   |  }
+973   |  # implies uniform[0,1] prior for initial catchability
+974   |  logit_qdW[1,j]~dnorm(0,0.39) 
+975   |  #logit_qdR[1,j]~dnorm(0,0.39)
+976   |  }
+977   |  mean_qdW[2]~dnorm(0,0.39) # 2SW
+978   |  #mean_qdW[1]<-mean_qdW[2]*eff_qd[1] # 1SW # this is dealt with in old way!
+979   |  mean_qdW[3]<-mean_qdW[2]*eff_qd # MSW
+980   |  ##mean_qdR[3]~dnorm(0,0.39) # 2SW
+981   |  ##mean_qdR[2]<-mean_qdR[3]*eff_qd[1] # 1SW
+982   |  ##mean_qdR[4]<-mean_qdR[3]*eff_qd[2] # MSW
+983   |  eff_qd~dbeta(10,5)
+984   |  # for(i in 1:2){
+985   |  #   eff_qd[i]~dbeta(10,5)
+986   |  # }
+987   |  tau_qd<-1/((1-pow(phi_qd,2))*(sd_qd*sd_qd))  
+988   |  # Marginal variance chosen to give uniform when mean=0, otherwise unimodal
+989   |  sd_qd~dunif(0.01,1.6)
+990   |  phi_qd~dunif(0,1) #positive autocorrelation
+991   |  for(i in 1:(m+proj_years)){
+992   |  for(j in 4:6){
+993   |  # Same catchability of MSW salmon in the longline fishery
+994   |  qdW[i,j] <- qdW[i+j-3,3]
+995   |  qdR[i,j] <-qdW[i,j]# qdR[i+j-4,4]
+996   |  }
+997   |  }
+998   |  # River fishery
+999   |  # ================
+1000  |  qrR[2] <- -log(1-HRR[2])/Er[1,1]# Catchability of non-reproductive salmon in the river
+1001  |  qrR[3] <-qrR[2]
+1002  |  for (j in 2:3){ 
+1003  |  HRR[j] ~dbeta (5,1)# Harvest rate in terminal river fishery  
+1004  |  #    qdW[j] ~ dlnorm(mqd[j], tauqd)# Catchability of reproductive salmon in the driftnet 
+1005  |  # qdR[j] ~ dlnorm(mqd[j], tauqd)# Catchability of non-reproductive salmon in the driftnet 
+1006  |  # mqd[j] <- log(-log(1-HRD[j])/Edo[1,1])# Mean catchability coefficient driftnet fishery
+1007  |  #     
+1008  |  # Catchability coefficient of salmon from area 1 by coastal fishery 
+1009  |  # This data is available only for AU1
+1010  |  qctnW[j,1] ~ dlnorm(mqctn[j,1], tauqctn)# Catchability wild salmon coastal trapnet
+1011  |  qctnR[j,1] ~ dlnorm(mqctn[j,1], tauqctn)# Catchability reared salmon coastal trapnet
+1012  |  mqctn[j,1] <- log(-log(1-HRCTN[j,1])/Ectn[1,1,1])# Mean catchability coastal trapnet 
+1013  |  qcgnW[j,1] ~ dlnorm(mqcgn[j,1], tauqcgn)# Catchability wild salmon coastal gillnet
+1014  |  qcgnR[j,1] ~ dlnorm(mqcgn[j,1], tauqcgn)# Catchability reared salmon coastal gillnet 
+1015  |  mqcgn[j,1] <- log(-log(1-HRCGN[j,1])/Ecgn[1,1,1])# Mean catchability coastal gillnet 
+1016  |  # For AU2 and AU3 we assume the ratio between wild and reared to be the same as in AU1
+1017  |  #   AU based change needed
+1018  |  #   for (au in 2:3){
+1019  |  #  
+1020  |  #         qctnR[j,au] ~ dlnorm(mqctn[j,au], tauqctn)# Catchability reared salmon coastal trapnet
+1021  |  #     mqctn[j,au] <- log(-log(1-HRCTN[j,au])/Ectn[1,1,1])# Mean catchability coastal trapnet 
+1022  |  #     qctnW[j,au] <- (qctnW[j,1] / qctnR[j,1] ) * qctnR[j,au]
+1023  |  #     
+1024  |  #         qcgnR[j,au] ~ dlnorm(mqcgn[j,au], tauqcgn)# Catchability reared salmon coastal gillnet 
+1025  |  #     mqcgn[j,au] <- log(-log(1-HRCGN[j,au])/Ecgn[1,1,1])# Mean catchability coastal gillnet 
+1026  |  #         qcgnW[j,au] <- (qcgnW[j,1] / qcgnR[j,1] ) * qcgnR[j,au]
+1027  |  #       
+1028  |  #     }
+1029  |  #  HRD[j] ~dbeta (2,5)# Harvest rate driftnet fishery
+1030  |  #  HRL[j] ~dbeta (2,5)# Harvest rate longline fishery
+1031  |  }
+1032  |  #for (au in 1:3){
+1033  |  #   AU based change needed
+1034  |  for (au in stock:stock){
+1035  |  HRCGN[2,au]  ~dbeta (2,2.5) # Harvest rate coastal gillnet fishery of fish from area k
+1036  |  HRCTN[2,au]  ~dbeta (2,2.5) # Harvest rate coastal trapnet fishery of fish from area k
+1037  |  HRCGN[3,au]  ~dbeta (2,5) # Harvest rate coastal gillnet fishery of fish from area k
+1038  |  HRCTN[3,au]  ~dbeta (2,5) # Harvest rate coastal trapnet fishery of fish from area k
+1039  |  }
+1040  |  for (j in 4:5){ 
+1041  |  HRR[j] ~dbeta (5,1)# Harvest rate in terminal river fishery
+1042  |  qrR[j] <- qrR[3]# Same catchability of MSW salmon in the river
+1043  |  #qlW[j] <- qlW[2]# Same catchability of MSW salmon in the longline fishery
+1044  |  #qlR[j] <- qlR[2]# Same catchability of MSW salmon in the longline fishery
+1045  |  #  qdW[j] ~ dlnorm(mqd[j], tauqd)# Catchability of reproductive salmon in the driftnet 
+1046  |  # qdR[j] ~ dlnorm(mqd[j], tauqd)# Catchability of non-reproductive salmon in the driftnet 
+1047  |  # mqd[j] <- log(-log(1-HRD[j])/Edo[1,1])# Mean catchability coefficient driftnet fishery
+1048  |  qctnW[j,1] <- qctnW[3,1]# Same catchability of MSW salmon in the coastal trapnet fishery
+1049  |  qcgnW[j,1] <- qcgnW[3,1]# Same catchability of MSW salmon in the coastal gillnet fishery
+1050  |  qctnR[j,1] <- qctnR[3,1]# Same catchability of MSW salmon in the coastal trapnet fishery
+1051  |  qcgnR[j,1] <- qcgnR[3,1]# Same catchability of MSW salmon in the coastal gillnet fishery
+1052  |  HRCGN[j,1]  ~dbeta (2,5) # Harvest rate coastal gillnet fishery of fish from area k
+1053  |  HRCTN[j,1]  ~dbeta (2,5) # Harvest rate coastal trapnet fishery of fish from area k
+1054  |  # for (au in 2:3){
+1055  |  # #   AU based change needed
+1056  |  # 
+1057  |  # qctnW[j,au] <- (qctnW[j,1] / qctnR[j,1] ) * qctnR[j,au]
+1058  |  # qcgnW[j,au] <- (qcgnW[j,1] / qcgnR[j,1] ) * qcgnR[j,au]
+1059  |  #    qctnR[j,au] <- qctnR[3,au]# Same catchability of MSW salmon in the coastal trapnet fishery
+1060  |  # qcgnR[j,au] <- qcgnR[3,au]# Same catchability of MSW salmon in the coastal gillnet fishery
+1061  |  #    
+1062  |  #    HRCGN[j,au]  ~dbeta (2,5) # Harvest rate coastal gillnet fishery of fish from area k
+1063  |  # HRCTN[j,au]  ~dbeta (2,5) # Harvest rate coastal trapnet fishery of fish from area k
+1064  |  #     
+1065  |  #    }
+1066  |  #  HRD[j] ~dbeta (2,5)# Harvest rate driftnet fishery
+1067  |  #HRL[j] ~dbeta (2,5)# Harvest rate longline fishery
+1068  |  }
+1069  |  for (j in 6:6){ 
+1070  |  HRR[j] ~dbeta (5,1)# Harvest rate in terminal river fishery
+1071  |  qrR[j] <- qrR[3]# Catchability of non-reproductive salmon in the river
+1072  |  for(i in 1:(m+proj_years+3)){
+1073  |  qlW[i,j] <- 0 #not defined in bugs model
+1074  |  qlR[i,j] <- 0 
+1075  |  }
+1076  |  #qdW[j] ~ dlnorm(mqd[j], tauqd)# Catchability of reproductive salmon in the driftnet 
+1077  |  #qdR[j] ~ dlnorm(mqd[j], tauqd)# Catchability of non-reproductive salmon in the driftnet 
+1078  |  #mqd[j] <- log(-log(1-HRD[j])/Edo[1,1])# Mean catchability coefficient driftnet fishery
+1079  |  # Catchability coefficient of salmon from area l by coastal fishery
+1080  |  qctnW[j,1] ~ dlnorm(mqctn[j,1], tauqctn)# Catchability wild salmon coastal trapnet
+1081  |  qctnR[j,1] ~ dlnorm(mqctn[j,1], tauqctn)# Catchability reared salmon coastal trapnet
+1082  |  mqctn[j,1] <- log(-log(1-HRCTN[j,1])/Ectn[1,1,1])# Mean catchability coastal trapnet fishery
+1083  |  qcgnW[j,1] ~ dlnorm(mqcgn[j,1], tauqcgn)# Catchability wild salmon coastal gillnet
+1084  |  qcgnR[j,1] ~ dlnorm(mqcgn[j,1], tauqcgn)# Catchability reared salmon coastal gillnet 
+1085  |  mqcgn[j,1] <- log(-log(1-HRCGN[j,1])/Ecgn[1,1,1])# Mean catchability coastal gillnet fishery
+1086  |  HRCGN[j,1]  ~dbeta (2,5) # Harvest rate coastal gillnet fishery of fish from area k
+1087  |  HRCTN[j,1]  ~dbeta (2,5) # Harvest rate coastal trapnet fishery of fish from area k
+1088  |  # for (au in 2:3){
+1089  |  # #   AU based change needed
+1090  |  # 
+1091  |  # qctnW[j,au] <- (qctnW[j,1] / qctnR[j,1] ) * qctnR[j,au]
+1092  |  # qcgnW[j,au] <- (qcgnW[j,1] / qcgnR[j,1] ) * qcgnR[j,au]
+1093  |  #    qctnR[j,au] ~ dlnorm(mqctn[j,au], tauqctn)# Catchability reared salmon coastal trapnet
+1094  |  # mqctn[j,au] <- log(-log(1-HRCTN[j,au])/Ectn[1,1,1])# Mean catchability coastal trapnet fishery
+1095  |  # qcgnR[j,au] ~ dlnorm(mqcgn[j,au], tauqcgn)# Catchability reared salmon coastal gillnet 
+1096  |  # mqcgn[j,au] <- log(-log(1-HRCGN[j,au])/Ecgn[1,1,1])# Mean catchability coastal gillnet fishery
+1097  |  #    
+1098  |  #    HRCGN[j,au]  ~dbeta (2,5) # Harvest rate coastal gillnet fishery of fish from area k
+1099  |  # HRCTN[j,au]  ~dbeta (2,5) # Harvest rate coastal trapnet fishery of fish from area k
+1100  |  #    }
+1101  |  #HRD[j] ~dbeta (2,5)# Harvest rate driftnet fishery
+1102  |  #HRL[j] ~dbeta (2,5)# Harvest rate longline fishery
+1103  |  }
+1104  |  tauqd ~ dgamma(10,1)T(1,)
+1105  |  tauql ~ dgamma(50,1)T(1,)
+1106  |  tauqr ~ dgamma(10,1)T(1,)
+1107  |  tauqcgn ~ dgamma(10,1)T(1,)
+1108  |  tauqctn ~ dgamma(10,1)T(1,)
+1109  |  #Negbin ~1/overdispersion parameters
+1110  |  for (j in 1:6){
+1111  |  rrW[j] ~ dunif(1,200)
+1112  |  rrRsp[j] ~  dunif(1,200)
+1113  |  rrR[j] ~  dunif(1,200)   
+1114  |  rcW[j] ~  dunif(1,200)
+1115  |  rcR[j] ~  dunif(1,200)
+1116  |  rdW[j]~ dunif(1,200)
+1117  |  rdR[j] ~ dunif(1,200)
+1118  |  rlW[j] ~ dunif(1,200)
+1119  |  rlR[j] ~ dunif(1,200)
+1120  |  }
+1121  |  # Tag retention rate
+1122  |  Tretain ~ dbeta(20,8)T(0.5,1)
+1123  |  # Reporting rates in the different fisheries
+1124  |  reportc ~ dbeta(11,9)T(0.2,0.8)# coastal fishery
+1125  |  reportrR ~ dbeta(16,6)T(0.3,0.95)# river fishery
+1126  |  reportrW ~ dbeta(16,6)T(0.3,0.95)# river fishery
+1127  |  reportd ~ dbeta(8,4)T(0.2,0.95)# driftnet fishery
+1128  |  reportl ~ dbeta(10,4)T(0.3,0.95)# longline fishery
+1129  |  #Catch likelihoods
+1130  |  tauCR<-1/(SCR*SCR)
+1131  |  tauCC<-1/(SCC*SCC)
+1132  |  tauCO<-1/(SCO*SCO)
+1133  |  tauCT<-1/(SCT*SCT)  
+1134  |  SCR~dbeta(1.45,8.19)
+1135  |  SCC~dbeta(1.45,8.19) 
+1136  |  SCO~dbeta(1.45,8.19) 
+1137  |  SCT~dbeta(1.45,8.19) 
+1138  |  # These CVs should be at the original scale, likely to be close to the values of SCR-SCO
+1139  |  cvCR<-sqrt(exp(SCR*SCR)-1)
+1140  |  cvCC<-sqrt(exp(SCC*SCC)-1)
+1141  |  cvCO<-sqrt(exp(SCO*SCO)-1)
+1142  |  cvCT<-sqrt(exp(SCT*SCT)-1)  
+1143  |  #Maturation
+1144  |  for (i in 1:(m+proj_years+5)){ # calendar years 1987-present+5
+1145  |  for (j in 1:4){ # sea ages (1=1SW, 2=2SW etc.)
+1146  |  muLW[i,j]<-cL[i]+bL[j]+delta[j]*Temp[i] # temperature effect differs on age groups
+1147  |  #lw[i,j]~dnorm(muLW[i,j],tauL[j])
+1148  |  lw[i,j]<-muLW[i,j]+(1/sqrt(tauL[j]))*eLW[i]
+1149  |  logit(LW[i,j])<-lw[i,j]
+1150  |  muLR[i,j]<-cL[i]+bL[j]+LReffect[j]+delta[j]*Temp[i]
+1151  |  #lr[i,j]~dnorm(muLR[i,j],tauL[j])
+1152  |  lr[i,j]<-muLR[i,j]+(1/sqrt(tauL[j]))*eLR[i]
+1153  |  logit(LR[i,j])<-lr[i,j]
+1154  |  }
+1155  |  eLW[i]~dnorm(0,1)
+1156  |  eLR[i]~dnorm(0,1)
+1157  |  Temp[i]~dnorm(muTemp[i],tauTemp[i])     #muTemp and tauTemp from Temperature data file
+1158  |  cL[i]~dnorm(mucL,taucL)
+1159  |  LW[i,5]<-1
+1160  |  LR[i,5]<-1
+1161  |  LW[i,6]<-1   #j=6 not  used as last year of spawners (j=6) use mat[,5] 
+1162  |  LR[i,6]<-1
+1163  |  }
+1164  |  for (j in 1:3){ # sea ages (1=1SW, 2=2SW etc.)
+1165  |  delta[j]~dunif(0.001,1)
+1166  |  LReffect[j]~dlnorm(-1,2)
+1167  |  }
+1168  |  # MSW effects
+1169  |  delta[4]<-delta[3]
+1170  |  LReffect[4]<-LReffect[3]
+1171  |  mucL~dnorm(0.4,5.4)
+1172  |  taucL~dlnorm(4.6,2.8)
+1173  |  bL[1]~dnorm(-2.9,5.4)
+1174  |  bL[2]~dnorm(-0.84,5.4)
+1175  |  bL[3]~dnorm(0.047,5.4)
+1176  |  bL[4]~dnorm(1.40,5.4)
+1177  |  tauL[1]~dlnorm(0.42,49)
+1178  |  tauL[2]~dlnorm(1.7,44)
+1179  |  tauL[3]~dlnorm(2.3,41)
+1180  |  tauL[4]~dlnorm(1.4,46)
+1181  |  #priors for spawner counting
+1182  |  #for(s in 1:stocks){
+1183  |  for(s in stock:stock){
+1184  |  a_spawn[s]<-mu_spawn[s]*eta_spawn[s]+1
+1185  |  b_spawn[s]<-(1-mu_spawn[s])*eta_spawn[s]+1
+1186  |  mu_spawn[s]~dbeta(mu_sp_alpha[s],mu_sp_beta[s])      
+1187  |  CV_spawn[s]~dbeta(CV_sp_alpha[s],CV_sp_beta[s])
+1188  |  eta_spawn[s]<-(1-mu_spawn[s])/(mu_spawn[s]*CV_spawn[s]*CV_spawn[s])         #-1
+1189  |  for(i in 1:(m+proj_years+5)){
+1190  |  p.detect[i,s]~dbeta(a_spawn[s],b_spawn[s])         #extra 5 years (m+5) not used here...
+1191  |  p.ladder[i,s]~dbeta(alpha_ladder[i,s],beta_ladder[i,s])
+1192  |  surv_migr[i,s]~dbeta(alpha_migr[i,s],beta_migr[i,s])   
+1193  |  }
+1194  |  eta_msw[s]<-(1/corr_msw[s])-1
+1195  |  corr_msw[s]~dunif(0.0001,0.5)
+1196  |  }
+1197  |  tauDS<-1/(log(cvDS*cvDS+1))
+1198  |  cvDS~dlnorm(-2.37,8)
+1199  |  coefDS<-1.05 # assume that Simojoki Didson count is underestimate 
+1200  |  #   change 
+1201  |  # for(rs in 1:rstocks){
+1202  |  #     aTrap[rs]<-muTrap[rs]*etaTrap[rs]+1
+1203  |  #     bTrap[rs]<-(1-muTrap[rs])*etaTrap[rs]+1
+1204  |  # }
+1205  |  muTrap[1]~dbeta(2,2)        #Lule?lven AU2
+1206  |  muTrap[2]~dbeta(72.7,197)   #Dal?lven AU3
+1207  |  #etaTrap[1]~dlnorm(10,0.1)
+1208  |  etaTrap[1]~dlnorm(10,1)
+1209  |  etaTrap[2]~dlnorm(3.7,15.7)
+1210  |  Usmolt~dlnorm(0.01, 85)T(0.8,1.5) # Uncertainty factor
+1211  |  }
+
+
+JAGS model output(s):
+
+Simulation 1:
+
+1    |  Welcome to JAGS 4.3.0 on Mon Feb 12 13:18:50 2024
+2    |  JAGS is free software and comes with ABSOLUTELY NO WARRANTY
+3    |  Loading module: basemod: ok
+4    |  Loading module: bugs: ok
+5    |  . Loading module: mix: ok
+6    |  . . Reading data file data.txt
+7    |  . Compiling model graph
+8    |     Resolving undeclared variables
+9    |     Allocating nodes
+10   |  RUNTIME ERROR:
+11   |  Compilation error on line 676.
+12   |  Index out of range taking subset of  qctnR
+13   |  Deleting model
+14   |  
+15   |  WARNING: Unused variable(s) in data table:
+16   |  AUR
+17   |  AUS
+18   |  CatchR
+19   |  NLuleRec
+20   |  NLuleRel
+21   |  RProp
+22   |  TrapTot
+23   |  avail_dc
+24   |  avail_r
+25   |  rstocks
+26   |  yLule
+27   |  
+28   |  . Reading parameter file inits1.txt
+29   |  Can't set RNG name. No model!
+30   |  Can't set initial values. No model!
+31   |  . Can't initialize. No model!
+32   |  . Adaptation skipped: model is not in adaptive mode.
+33   |  . Updating 10000
+34   |  -------------------------------------------------| 10000
+35   |  Can't update. No model!
+36   |  Deleting model
+37   |  
+38   |  . Can't set monitor. No model!
+39   |  . Can't set monitor. No model!
+40   |  . Can't set monitor. No model!
+41   |  . Can't set monitor. No model!
+42   |  . Can't set monitor. No model!
+43   |  . Can't set monitor. No model!
+44   |  . Can't set monitor. No model!
+45   |  . Can't set monitor. No model!
+46   |  . Can't set monitor. No model!
+47   |  . Can't set monitor. No model!
+48   |  . Can't set monitor. No model!
+49   |  . Can't set monitor. No model!
+50   |  . Can't set monitor. No model!
+51   |  . Can't set monitor. No model!
+52   |  . Can't set monitor. No model!
+53   |  . Can't set monitor. No model!
+54   |  . Can't set monitor. No model!
+55   |  . Can't set monitor. No model!
+56   |  . Can't set monitor. No model!
+57   |  . Can't set monitor. No model!
+58   |  . Can't set monitor. No model!
+59   |  . Can't set monitor. No model!
+60   |  . Can't set monitor. No model!
+61   |  . Can't set monitor. No model!
+62   |  . Can't set monitor. No model!
+63   |  . Can't set monitor. No model!
+64   |  . Can't set monitor. No model!
+65   |  . Can't set monitor. No model!
+66   |  . Can't set monitor. No model!
+67   |  . Can't set monitor. No model!
+68   |  . Can't set monitor. No model!
+69   |  . Can't set monitor. No model!
+70   |  . Can't set monitor. No model!
+71   |  . Can't set monitor. No model!
+72   |  . Can't set monitor. No model!
+73   |  . Can't set monitor. No model!
+74   |  . Can't set monitor. No model!
+75   |  . Can't set monitor. No model!
+76   |  . Can't set monitor. No model!
+77   |  . Can't set monitor. No model!
+78   |  . Can't set monitor. No model!
+79   |  . Can't set monitor. No model!
+80   |  . Can't set monitor. No model!
+81   |  . Can't set monitor. No model!
+82   |  . Can't set monitor. No model!
+83   |  . Can't set monitor. No model!
+84   |  . Can't set monitor. No model!
+85   |  . Can't set monitor. No model!
+86   |  . Can't set monitor. No model!
+87   |  . Can't set monitor. No model!
+88   |  . Can't set monitor. No model!
+89   |  . Can't set monitor. No model!
+90   |  . Can't set monitor. No model!
+91   |  . Can't set monitor. No model!
+92   |  . Can't set monitor. No model!
+93   |  . Can't set monitor. No model!
+94   |  . Can't set monitor. No model!
+95   |  . Can't set monitor. No model!
+96   |  . Can't set monitor. No model!
+97   |  . Can't set monitor. No model!
+98   |  . Can't set monitor. No model!
+99   |  . Can't set monitor. No model!
+100  |  . Can't set monitor. No model!
+101  |  . Can't set monitor. No model!
+102  |  . Can't set monitor. No model!
+103  |  . Can't set monitor. No model!
+104  |  . Can't set monitor. No model!
+105  |  . Can't set monitor. No model!
+106  |  . Can't set monitor. No model!
+107  |  . Can't set monitor. No model!
+108  |  . Can't set monitor. No model!
+109  |  . Can't set monitor. No model!
+110  |  . Can't set monitor. No model!
+111  |  . Can't set monitor. No model!
+112  |  . Can't set monitor. No model!
+113  |  . Can't set monitor. No model!
+114  |  . Can't set monitor. No model!
+115  |  . Can't set monitor. No model!
+116  |  . Can't set monitor. No model!
+117  |  . Can't set monitor. No model!
+118  |  . Can't set monitor. No model!
+119  |  . Can't set monitor. No model!
+120  |  . Can't set monitor. No model!
+121  |  . Can't set monitor. No model!
+122  |  . Can't set monitor. No model!
+123  |  . Can't set monitor. No model!
+124  |  . Can't set monitor. No model!
+125  |  . Can't set monitor. No model!
+126  |  . Can't set monitor. No model!
+127  |  . Can't set monitor. No model!
+128  |  . Can't set monitor. No model!
+129  |  . Can't set monitor. No model!
+130  |  . Can't set monitor. No model!
+131  |  . Can't set monitor. No model!
+132  |  . Can't set monitor. No model!
+133  |  . Can't set monitor. No model!
+134  |  . Can't set monitor. No model!
+135  |  . Can't set monitor. No model!
+136  |  . Can't set monitor. No model!
+137  |  . Can't set monitor. No model!
+138  |  . Can't set monitor. No model!
+139  |  . Can't set monitor. No model!
+140  |  . Can't set monitor. No model!
+141  |  . Can't set monitor. No model!
+142  |  . Can't set monitor. No model!
+143  |  . Can't set monitor. No model!
+144  |  . Can't set monitor. No model!
+145  |  . Can't set monitor. No model!
+146  |  . Can't set monitor. No model!
+147  |  . Can't set monitor. No model!
+148  |  . Can't set monitor. No model!
+149  |  . Updating 10
+150  |  Can't update. No model!
+151  |  Deleting model
+152  |  . No model
+153  |  . Can't dump CODA output. No model!
+154  |  . Can't dump samplers. No model!
+155  |  . Updating 0
+156  |  Can't update. No model!
+157  |  Deleting model
+158  |  . Deleting model
+159  |  . 
+
+Simulation 2:
+
+1    |  Welcome to JAGS 4.3.0 on Mon Feb 12 13:18:50 2024
+2    |  JAGS is free software and comes with ABSOLUTELY NO WARRANTY
+3    |  Loading module: basemod: ok
+4    |  Loading module: bugs: ok
+5    |  . Loading module: mix: ok
+6    |  . . Reading data file data.txt
+7    |  . Compiling model graph
+8    |     Resolving undeclared variables
+9    |     Allocating nodes
+10   |  RUNTIME ERROR:
+11   |  Compilation error on line 676.
+12   |  Index out of range taking subset of  qctnR
+13   |  Deleting model
+14   |  
+15   |  WARNING: Unused variable(s) in data table:
+16   |  AUR
+17   |  AUS
+18   |  CatchR
+19   |  NLuleRec
+20   |  NLuleRel
+21   |  RProp
+22   |  TrapTot
+23   |  avail_dc
+24   |  avail_r
+25   |  rstocks
+26   |  yLule
+27   |  
+28   |  . Reading parameter file inits2.txt
+29   |  Can't set RNG name. No model!
+30   |  Can't set initial values. No model!
+31   |  . Can't initialize. No model!
+32   |  . Adaptation skipped: model is not in adaptive mode.
+33   |  . Updating 10000
+34   |  -------------------------------------------------| 10000
+35   |  Can't update. No model!
+36   |  Deleting model
+37   |  
+38   |  . Can't set monitor. No model!
+39   |  . Can't set monitor. No model!
+40   |  . Can't set monitor. No model!
+41   |  . Can't set monitor. No model!
+42   |  . Can't set monitor. No model!
+43   |  . Can't set monitor. No model!
+44   |  . Can't set monitor. No model!
+45   |  . Can't set monitor. No model!
+46   |  . Can't set monitor. No model!
+47   |  . Can't set monitor. No model!
+48   |  . Can't set monitor. No model!
+49   |  . Can't set monitor. No model!
+50   |  . Can't set monitor. No model!
+51   |  . Can't set monitor. No model!
+52   |  . Can't set monitor. No model!
+53   |  . Can't set monitor. No model!
+54   |  . Can't set monitor. No model!
+55   |  . Can't set monitor. No model!
+56   |  . Can't set monitor. No model!
+57   |  . Can't set monitor. No model!
+58   |  . Can't set monitor. No model!
+59   |  . Can't set monitor. No model!
+60   |  . Can't set monitor. No model!
+61   |  . Can't set monitor. No model!
+62   |  . Can't set monitor. No model!
+63   |  . Can't set monitor. No model!
+64   |  . Can't set monitor. No model!
+65   |  . Can't set monitor. No model!
+66   |  . Can't set monitor. No model!
+67   |  . Can't set monitor. No model!
+68   |  . Can't set monitor. No model!
+69   |  . Can't set monitor. No model!
+70   |  . Can't set monitor. No model!
+71   |  . Can't set monitor. No model!
+72   |  . Can't set monitor. No model!
+73   |  . Can't set monitor. No model!
+74   |  . Can't set monitor. No model!
+75   |  . Can't set monitor. No model!
+76   |  . Can't set monitor. No model!
+77   |  . Can't set monitor. No model!
+78   |  . Can't set monitor. No model!
+79   |  . Can't set monitor. No model!
+80   |  . Can't set monitor. No model!
+81   |  . Can't set monitor. No model!
+82   |  . Can't set monitor. No model!
+83   |  . Can't set monitor. No model!
+84   |  . Can't set monitor. No model!
+85   |  . Can't set monitor. No model!
+86   |  . Can't set monitor. No model!
+87   |  . Can't set monitor. No model!
+88   |  . Can't set monitor. No model!
+89   |  . Can't set monitor. No model!
+90   |  . Can't set monitor. No model!
+91   |  . Can't set monitor. No model!
+92   |  . Can't set monitor. No model!
+93   |  . Can't set monitor. No model!
+94   |  . Can't set monitor. No model!
+95   |  . Can't set monitor. No model!
+96   |  . Can't set monitor. No model!
+97   |  . Can't set monitor. No model!
+98   |  . Can't set monitor. No model!
+99   |  . Can't set monitor. No model!
+100  |  . Can't set monitor. No model!
+101  |  . Can't set monitor. No model!
+102  |  . Can't set monitor. No model!
+103  |  . Can't set monitor. No model!
+104  |  . Can't set monitor. No model!
+105  |  . Can't set monitor. No model!
+106  |  . Can't set monitor. No model!
+107  |  . Can't set monitor. No model!
+108  |  . Can't set monitor. No model!
+109  |  . Can't set monitor. No model!
+110  |  . Can't set monitor. No model!
+111  |  . Can't set monitor. No model!
+112  |  . Can't set monitor. No model!
+113  |  . Can't set monitor. No model!
+114  |  . Can't set monitor. No model!
+115  |  . Can't set monitor. No model!
+116  |  . Can't set monitor. No model!
+117  |  . Can't set monitor. No model!
+118  |  . Can't set monitor. No model!
+119  |  . Can't set monitor. No model!
+120  |  . Can't set monitor. No model!
+121  |  . Can't set monitor. No model!
+122  |  . Can't set monitor. No model!
+123  |  . Can't set monitor. No model!
+124  |  . Can't set monitor. No model!
+125  |  . Can't set monitor. No model!
+126  |  . Can't set monitor. No model!
+127  |  . Can't set monitor. No model!
+128  |  . Can't set monitor. No model!
+129  |  . Can't set monitor. No model!
+130  |  . Can't set monitor. No model!
+131  |  . Can't set monitor. No model!
+132  |  . Can't set monitor. No model!
+133  |  . Can't set monitor. No model!
+134  |  . Can't set monitor. No model!
+135  |  . Can't set monitor. No model!
+136  |  . Can't set monitor. No model!
+137  |  . Can't set monitor. No model!
+138  |  . Can't set monitor. No model!
+139  |  . Can't set monitor. No model!
+140  |  . Can't set monitor. No model!
+141  |  . Can't set monitor. No model!
+142  |  . Can't set monitor. No model!
+143  |  . Can't set monitor. No model!
+144  |  . Can't set monitor. No model!
+145  |  . Can't set monitor. No model!
+146  |  . Can't set monitor. No model!
+147  |  . Can't set monitor. No model!
+148  |  . Can't set monitor. No model!
+149  |  . Updating 10
+150  |  Can't update. No model!
+151  |  Deleting model
+152  |  . No model
+153  |  . Can't dump CODA output. No model!
+154  |  . Can't dump samplers. No model!
+155  |  . Updating 0
+156  |  Can't update. No model!
+157  |  Deleting model
+158  |  . Deleting model
+159  |  . 
+
